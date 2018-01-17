@@ -66,10 +66,14 @@ class Agent:
             fig = problem.figures[fig_name]
 
             obj_arr = []
-            for obj_name in fig.objects:
-                obj_arr.append(fig.objects[obj_name])
+            for raven_obj in fig.objects:
+                obj_arr.append(fig.objects[raven_obj])
+                print(fig.objects[raven_obj].name)
             obj_dict[fig_name] = obj_arr
 
         fig_list.sort()
         ans_list.sort()
         return obj_dict, fig_list, ans_list
+
+    def PairUp(self, listA, listB):
+        return 0
