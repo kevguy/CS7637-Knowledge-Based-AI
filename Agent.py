@@ -9,8 +9,8 @@
 # These methods will be necessary for the project's main method to run.
 
 # Install Pillow and uncomment this line to access image processing.
-#from PIL import Image
-#import numpy
+from PIL import Image
+import numpy
 
 class Agent:
     # The default constructor for your Agent. Make sure to execute any
@@ -31,4 +31,18 @@ class Agent:
     # Make sure to return your answer *as an integer* at the end of Solve().
     # Returning your answer as a string may cause your program to crash.
     def Solve(self,problem):
+        for figName in problem.figures:
+
+        print('\n')
         return -1
+
+    # take a file path and display the image
+    def ShowImage(self, file_path):
+        img = Image.open(file_path, 'r')
+        img.show()
+
+    # Show all images in the problem
+    def ShowAllImages(self, problem):
+        for fig_name in problem.figures:
+            file_path = problem.figures[fig_name].visualFilename
+            self.ShowImage(file_path)
