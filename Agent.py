@@ -31,9 +31,13 @@ class Agent:
     # Make sure to return your answer *as an integer* at the end of Solve().
     # Returning your answer as a string may cause your program to crash.
     def Solve(self,problem):
-        for figName in problem.figures:
 
-        print('\n')
+        # loop over the figures, each figure has a name
+        self.obj_info, self.fig_list, self.ans_list = self.Create_Obj_Info(problem)
+        print(self.obj_info)
+        print(self.fig_list)
+        print(self.ans_list)
+        print('\n\n')
         return -1
 
     # take a file path and display the image
@@ -46,3 +50,26 @@ class Agent:
         for fig_name in problem.figures:
             file_path = problem.figures[fig_name].visualFilename
             self.ShowImage(file_path)
+
+    def Create_Obj_Info(self, problem):
+        # loop over the figures, each figure has a name
+        obj_dict = {}
+        fig_list = []
+        ans_list = []
+
+        for fig_name in problem.figures:
+            if (fig_name.isdigit()):
+                ans_list.append(fig_name)
+            else:
+                fig_list.append(fig_name)
+
+            fig = problem.figures[fig_name]
+
+            obj_arr = []
+            for obj_name in fig.objects:
+                obj_arr.append(fig.objects[obj_name])
+            obj_dict[fig_name] = obj_arr
+
+        fig_list.sort()
+        ans_list.sort()
+        return obj_dict, fig_list, ans_list
