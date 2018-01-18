@@ -41,6 +41,7 @@ class Agent:
             # print(candidate)
             # print(self.obj_info[candidate])
             self.scores[candidate] = self.Compare2x2(candidate, self.obj_info[candidate])
+            print('\n')
         # print(self.obj_info)
         # print(self.fig_list)
         # print(self.ans_list)
@@ -48,6 +49,8 @@ class Agent:
 
         # print(self.scores)
         # print(self.transformations)
+        # for transformation in self.transformations:
+        #     print(self.transformations[transformation]['shape'])
         return -1
 
     # take a file path and display the image
@@ -99,37 +102,165 @@ class Agent:
         self.transformations['C' + candidate_name] = self.InitTransformation()
         self.transformations['B' + candidate_name] = self.InitTransformation()
 
-        delWeight = 300 # weight for same deletion of objects
+        delWeight = 1 # weight for same deletion of objects
+        alignWeight = 1 # weight for same alignments
+        fillWeight = 1 # weight for fill
+        reflectionWeight = 4 # weight for reflection
+        angleWeight = 3 # weight for angle
+        sizeWeight = 2 # weight for size
+        unchangeWeight = 5 # weight for a shape being unchanged
+        fillUnchangeWeight = 1 # weight for fill property being unchanged
+        angleUnchangeWeight = 1 # weight for angle property being unchanged
+        sizeUnchangeWeight = 1 # weight for size property being unchanged
 
-        score = 0
+        abScore = 0
+        acScore = 0
 
-        # compare A to B
+        # loop over the objects inside a figure
+        # compare A with B
         for obj_a in figure_a:
-
             for obj_b in figure_b:
-                self.CompareAlignment('A', obj_a, 'B', obj_b)
+                self.LinkAlignment('A', obj_a, 'B', obj_b)
+                self.LinkShape('A', obj_a, 'B', obj_b)
+
+        # compare A with C
+        for obj_a in figure_a:
+            for obj_c in figure_c:
+                self.LinkAlignment('A', obj_a, 'C', obj_b)
+                self.LinkShape('A', obj_a, 'C', obj_b)
+
+        # compare B with candidate
+        for obj_b in figure_b:
+            for obj_cand in figure_candidate:
+                self.LinkAlignment('B', obj_b, candidate_name, obj_cand)
+                self.LinkShape('B', obj_b, candidate_name, obj_cand)
+
+        # compare C with candidate
+        for obj_c in figure_c:
+            for obj_cand in figure_candidate:
+                self.LinkAlignment('C', obj_c, candidate_name, obj_cand)
+                self.LinkShape('C', obj_c, candidate_name, obj_cand)
 
         # Compare deletion from AB to CD
         self.CompareObjsDeletion('A', figure_a, 'B', figure_b)
         self.CompareObjsDeletion('C', figure_c, candidate_name, figure_candidate)
 
-        # number of deletions are the same
-        if (self.transformations['C' + candidate_name]['deletion'] == self.transformations['AB']['deletion']):
-            score += (delWeight * self.transformations['AB']['deletion'])
-
         # Compare deletion from AC to BD
         self.CompareObjsDeletion('A', figure_a, 'C', figure_c)
         self.CompareObjsDeletion('B', figure_b, candidate_name, figure_candidate)
 
+        #######################################################################
+        # compare deletions
         # number of deletions are the same
+        if (self.transformations['C' + candidate_name]['deletion'] == self.transformations['AB']['deletion']):
+            abScore += (delWeight * abs(self.transformations['AB']['deletion']))
+
         if (self.transformations['B' + candidate_name]['deletion'] == self.transformations['AC']['deletion']):
-            score += (delWeight * self.transformations['AC']['deletion'])
+            acScore += (delWeight * abs(self.transformations['AC']['deletion']))
 
-        # loop over the objects inside a candidate figure
-        # for obj_cand in figure_candidate:
+        # compare alignments
+        if ('alignment' in self.transformations['AB'] and 'alignment' in self.transformations['C' + candidate_name]):
+            for alignment in self.transformations['C' + candidate_name]['alignment']:
+                for alignmentOrg in self.transformations['AB']['alignment']:
+                    if (alignment['from'] == alignmentOrg['from'] and alignment['to'] == alignmentOrg['to']):
+                        abScore += alignWeight
+
+        if ('alignment' in self.transformations['AC'] and 'alignment' in self.transformations['B' + candidate_name]):
+            for alignment in self.transformations['B' + candidate_name]['alignment']:
+                for alignmentOrg in self.transformations['AC']['alignment']:
+                    if (alignment['from'] == alignmentOrg['from'] and alignment['to'] == alignmentOrg['to']):
+                        acScore += alignWeight
+
+        # compare shapes
+        for shape_cand in self.transformations['C' + candidate_name]['shape']:
+            for shape_ab in self.transformations['AB']['shape']:
+
+                # first verify the transformation is unchanged in both relationships
+                if (shape_cand['changed'] == shape_ab['changed'] and shape_cand['changed'] == False):
+                    abScore += unchangeWeight
+                else:
+                    # compare fill, angle, size
+                    if ('fill' in shape_cand and 'fill' in shape_ab):
+                        if (shape_cand['fill']['changed'] == False and shape_ab['fill']['changed'] == False):
+                            # fill property unchanged
+                            abScore += fillUnchangeWeight
+                        elif (shape_cand['fill']['changed'] == True and shape_ab['fill']['changed'] == True):
+                            if (shape_cand['fill']['from'] == shape_ab['fill']['from'] and
+                                shape_cand['fill']['to'] == shape_ab['fill']['to']):
+                                # fill property changed, but transformation are the same
+                                abScore += fillWeight
+
+                    if ('angle' in shape_cand and 'angle' in shape_ab):
+                        if (shape_cand['angle']['changed'] == False and shape_ab['angle']['changed'] == False):
+                            # fill property unchanged
+                            abScore += angleUnchangeWeight
+                        elif (shape_cand['angle']['changed'] == True and shape_ab['angle']['changed'] == True):
+                            if (shape_cand['angle']['diff'] == shape_ab['angle']['diff']):
+                                # fill property changed, but transformation are the same
+                                if (abs(shape_cand['angle']['diff']) == 180 or abs(shape_cand['angle']['diff']) == 360):
+                                    abScore += reflectionWeight
+                                else:
+                                    abScore += angleWeight
 
 
 
+                    if ('size' in shape_cand and 'size' in shape_ab):
+                        if (shape_cand['size']['changed'] == False and shape_ab['size']['changed'] == False):
+                            # size property unchanged
+                            abScore += sizeUnchangeWeight
+                        elif (shape_cand['size']['changed'] == True and shape_ab['size']['changed'] == True):
+                            if (shape_cand['size']['from'] == shape_ab['size']['from'] and
+                                shape_cand['size']['to'] == shape_ab['size']['to']):
+                                # size property changed, but transformation are the same
+                                abScore += sizeWeight
+
+
+
+
+        for shape_cand in self.transformations['B' + candidate_name]['shape']:
+            for shape_ac in self.transformations['AC']['shape']:
+
+                # first verify the transformation is unchanged in both relationships
+                if (shape_cand['changed'] == shape_ac['changed'] and shape_cand['changed'] == False):
+                    acScore += unchangeWeight
+                else:
+                    # compare fill, angle, size
+                    if ('fill' in shape_cand and 'fill' in shape_ac):
+                        if (shape_cand['fill']['changed'] == False and shape_ac['fill']['changed'] == False):
+                            # fill property unchanged
+                            acScore += fillUnchangeWeight
+                        elif (shape_cand['fill']['changed'] == True and shape_ac['fill']['changed'] == True):
+                            if (shape_cand['fill']['from'] == shape_ac['fill']['from'] and
+                                shape_cand['fill']['to'] == shape_ac['fill']['to']):
+                                # fill property changed, but transformation are the same
+                                acScore += fillWeight
+
+                    if ('angle' in shape_cand and 'angle' in shape_ac):
+                        if (shape_cand['angle']['changed'] == False and shape_ac['angle']['changed'] == False):
+                            # fill property unchanged
+                            acScore += angleUnchangeWeight
+                        elif (shape_cand['angle']['changed'] == True and shape_ac['angle']['changed'] == True):
+                            if (shape_cand['angle']['diff'] == shape_ac['angle']['diff']):
+                                # fill property changed, but transformation are the same
+                                if (abs(shape_cand['angle']['diff']) == 180 or abs(shape_cand['angle']['diff']) == 360):
+                                    acScore += reflectionWeight
+                                else:
+                                    acScore += angleWeight
+
+
+                    if ('size' in shape_cand and 'size' in shape_ac):
+                        if (shape_cand['size']['changed'] == False and shape_ac['size']['changed'] == False):
+                            # size property unchanged
+                            acScore += sizeUnchangeWeight
+                        elif (shape_cand['size']['changed'] == True and shape_ac['size']['changed'] == True):
+                            if (shape_cand['size']['from'] == shape_ac['size']['from'] and
+                                shape_cand['size']['to'] == shape_ac['size']['to']):
+                                # size property changed, but transformation are the same
+                                acScore += sizeWeight
+
+
+        print(abScore)
+        print(acScore)
 
         # return score
         return -1
@@ -137,10 +268,12 @@ class Agent:
     def InitTransformation(self):
         transformation = {
             'deletion': float("inf"),
-            'angle': {},
-            'fill': {},
-            'shape': {},
-            'alignment': {}
+            'shape': [],
+            # 'size': {},
+            # 'angle': {},
+            # 'fill': [],
+            'alignment': [],
+            'inside': []
         }
         return transformation
 
@@ -148,18 +281,74 @@ class Agent:
         key = candidate_name_1 + candidate_name_2
         self.transformations[key]['deletion'] = len(candidate_1) - len(candidate_2)
 
-    def CompareAlignment(self, candidate_name_1, obj_1, candidate_name_2, obj_2):
+    def LinkAlignment(self, candidate_name_1, obj_1, candidate_name_2, obj_2):
         key = candidate_name_1 + candidate_name_2
-        obj_key = obj_1.name + '->' + obj_2.name
 
         # if ('alignment' in obj_1.attributes and 'alignment' in obj_2.attributes and
         #     obj_1.name == obj_2.name):
         if ('alignment' in obj_1.attributes and 'alignment' in obj_2.attributes):
-            self.transformations[key]['alignment'] = {
+            self.transformations[key]['alignment'].append({
                 'from_name': obj_1.name,
                 'from': obj_1.attributes['alignment'],
                 'to_name': obj_2.name,
                 'to': obj_2.attributes['alignment']
-            }
+            })
 
-            print(self.transformations[key]['alignment'])
+    def LinkShape(self, candidate_name_1, obj_1, candidate_name_2, obj_2):
+        key = candidate_name_1 + candidate_name_2
+        add = False
+        info = {
+            'from_name': obj_1.name,
+            'to_name': obj_2.name,
+            'changed': False
+        }
+
+        if (obj_1.attributes['shape'] == obj_2.attributes['shape']):
+            # shapes are the same
+            add = True
+
+            # see if shape goes from unfilled to filled or vice versa
+            if ('fill' in obj_1.attributes and 'fill' in obj_2.attributes and
+                (obj_1.attributes['fill'] != obj_2.attributes['fill'])):
+                info['changed'] = True
+                info['fill'] = {
+                    'changed': True,
+                    'from': obj_1.attributes['fill'],
+                    'to': obj_2.attributes['fill']
+                }
+            else:
+                info['fill'] = {
+                    'changed': False
+                }
+
+            # see if shape has angle transformation
+            if ('angle' in obj_1.attributes and 'angle' in obj_2.attributes and
+                (obj_1.attributes['angle'] != obj_2.attributes['angle'])):
+                info['changed'] = True
+                info['angle'] = {
+                    'changed': True,
+                    'from': int(obj_1.attributes['angle']),
+                    'to': int(obj_2.attributes['angle']),
+                    'diff': int(obj_2.attributes['angle']) - int(obj_1.attributes['angle'])
+                }
+            else:
+                info['angle'] = {
+                    'changed': False
+                }
+
+            # see if shape has size change
+            if ('size' in obj_1.attributes and 'size' in obj_2.attributes and
+                (obj_1.attributes['size'] != obj_2.attributes['size'])):
+                info['changed'] = True
+                info['size'] = {
+                    'changed': True,
+                    'from': obj_1.attributes['size'],
+                    'to': obj_2.attributes['size']
+                }
+            else:
+                info['size'] = {
+                    'changed': False
+                }
+
+        if add == True:
+            self.transformations[key]['shape'].append(info)
