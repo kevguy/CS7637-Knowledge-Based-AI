@@ -168,8 +168,8 @@ class Agent:
 
         score = 0
 
-        delWeight = 10 # weight for same deletion of objects
-        alignWeight = 10 # weight for same alignments
+        delWeight = 300 # weight for same deletion of objects
+        alignWeight = 30 # weight for same alignments
 
         fill_weight = 25 # weight for fill transformation
         fill_unchanged_weight = 25 # weight for fill property being unchanged
