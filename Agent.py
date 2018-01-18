@@ -103,15 +103,15 @@ class Agent:
         self.transformations['B' + candidate_name] = self.InitTransformation()
 
         delWeight = 1 # weight for same deletion of objects
-        alignWeight = 1 # weight for same alignments
-        fillWeight = 1 # weight for fill
+        alignWeight = 3 # weight for same alignments
+        fillWeight = 3 # weight for fill
         reflectionWeight = 4 # weight for reflection
         angleWeight = 3 # weight for angle
         sizeWeight = 2 # weight for size
-        unchangeWeight = 5 # weight for a shape being unchanged
-        fillUnchangeWeight = 1 # weight for fill property being unchanged
-        angleUnchangeWeight = 1 # weight for angle property being unchanged
-        sizeUnchangeWeight = 1 # weight for size property being unchanged
+        unchangeWeight = 6 # weight for a shape being unchanged
+        fillUnchangeWeight = 2 # weight for fill property being unchanged
+        angleUnchangeWeight = 2 # weight for angle property being unchanged
+        sizeUnchangeWeight = 2 # weight for size property being unchanged
 
         abScore = 0
         acScore = 0
@@ -179,6 +179,17 @@ class Agent:
                 if (shape_cand['changed'] == shape_ab['changed'] and shape_cand['changed'] == False):
                     abScore += unchangeWeight
                 else:
+                    # compare transformation
+                    if (shape_cand['transform']['changed'] == False and
+                        shape_ab['transform']['changed'] == False):
+                        abScore += 3
+                    elif (shape_cand['transform']['changed'] == True and
+                        shape_ab['transform']['changed'] == True):
+                        if (shape_cand['transform']['from'] == shape_ab['transform']['from'] and
+                            shape_cand['transform']['to'] == shape_ab['transform']['to']):
+                            abScore += 2
+
+
                     # compare fill, angle, size
                     if ('fill' in shape_cand and 'fill' in shape_ab):
                         if (shape_cand['fill']['changed'] == False and shape_ab['fill']['changed'] == False):
@@ -224,6 +235,17 @@ class Agent:
                 if (shape_cand['changed'] == shape_ac['changed'] and shape_cand['changed'] == False):
                     acScore += unchangeWeight
                 else:
+                    # compare transformation
+                    if (shape_cand['transform']['changed'] == False and
+                        shape_ac['transform']['changed'] == False):
+                        acScore += 3
+                    elif (shape_cand['transform']['changed'] == True and
+                        shape_ac['transform']['changed'] == True):
+                        if (shape_cand['transform']['from'] == shape_ac['transform']['from'] and
+                            shape_cand['transform']['to'] == shape_ac['transform']['to']):
+                            acScore += 2
+
+
                     # compare fill, angle, size
                     if ('fill' in shape_cand and 'fill' in shape_ac):
                         if (shape_cand['fill']['changed'] == False and shape_ac['fill']['changed'] == False):
@@ -307,6 +329,10 @@ class Agent:
             # shapes are the same
             add = True
 
+            info['transform'] = {
+                'changed': False
+            }
+
             # see if shape goes from unfilled to filled or vice versa
             if ('fill' in obj_1.attributes and 'fill' in obj_2.attributes and
                 (obj_1.attributes['fill'] != obj_2.attributes['fill'])):
@@ -349,6 +375,16 @@ class Agent:
                 info['size'] = {
                     'changed': False
                 }
+        else:
+            # shape transformation
+            add = True
+            info['changed'] = True
+            info['transform'] = {
+                'changed': True,
+                'from': obj_1.attributes['shape'],
+                'to': obj_2.attributes['shape']
+            }
+
 
         if add == True:
             self.transformations[key]['shape'].append(info)
