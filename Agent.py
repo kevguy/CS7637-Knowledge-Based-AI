@@ -1,5 +1,3 @@
-# Author: Daniel Rozen
-
 # Your Agent for solving Raven's Progressive Matrices. You MUST modify this file.
 #
 # You may also create and submit new files in addition to modifying this file.
@@ -12,7 +10,7 @@
 
 # Install Pillow and uncomment this line to access image processing.
 from PIL import Image
-from collections import OrderedDict
+import numpy
 
 class Agent:
     # The default constructor for your Agent. Make sure to execute any
@@ -20,370 +18,440 @@ class Agent:
     #
     # Do not add any variables to this signature; they will not be used by
     # main().
-
-    # . The constructor will be called at the beginning of the program, so you may
-    #  use this method to initialize any information necessary before your agent begins
-    #  solving problems.
     def __init__(self):
         pass
 
     # The primary method for solving incoming Raven's Progressive Matrices.
     # For each problem, your Agent's Solve() method will be called. At the
-    # conclusion of Solve(), your Agent should return an integer representing its
-    # answer to the question: "1", "2", "3", "4", "5", or "6". These integers
+    # conclusion of Solve(), your Agent should return an int representing its
+    # answer to the question: 1, 2, 3, 4, 5, or 6. Strings of these ints
     # are also the Names of the individual RavensFigures, obtained through
-    # RavensFigure.getName() (as Strings).
-    #
-    # In addition to returning your answer at the end of the method, your Agent
-    # may also call problem.checkAnswer(int givenAnswer). The parameter
-    # passed to checkAnswer should be your Agent's current guess for the
-    # problem; checkAnswer will return the correct answer to the problem. This
-    # allows your Agent to check its answer. Note, however, that after your
-    # agent has called checkAnswer, it will *not* be able to change its answer.
-    # checkAnswer is used to allow your Agent to learn from its incorrect
-    # answers; however, your Agent cannot change the answer to a question it
-    # has already answered.
-    #
-    # If your Agent calls checkAnswer during execution of Solve, the answer it
-    # returns will be ignored; otherwise, the answer returned at the end of
-    # Solve will be taken as your Agent's answer to this problem.
+    # RavensFigure.getName(). Return a negative number to skip a problem.
     #
     # Make sure to return your answer *as an integer* at the end of Solve().
     # Returning your answer as a string may cause your program to crash.
+    def Solve(self,problem):
+        print('Solving ' + problem.name)
 
-    # If your agent wants to skip a question, it should return a negative number.
-    def Solve(self, problem):
+        self.show_weight = False
+        if problem.name == 'Basic Problem B-05dvds':
+            self.show_weight = True
 
-        print("\n" + problem.name + "\n")
-        print(self.removeDuplicates("I-love-love"))
+        self.show_other = True
+        if problem.name.startswith('Basic Problem C') or problem.name.startswith('Challenge Problem'):
+            self.show_other = False
 
-        # compare shapes and attributes across figures A,B,C:
+        # loop over the figures, each figure has a name
+        self.obj_info, self.fig_list, self.ans_list = self.Create_Obj_Info(problem)
+        self.transformations = {}
+        self.scores = {}
+        for candidate in self.ans_list:
+            # print(candidate)
+            # print(self.obj_info[candidate])
+            self.scores[candidate] = self.Compare2x2(candidate, self.obj_info[candidate])
+            if self.show_weight:
+                print('\n')
+        # print(self.obj_info)
+        # print(self.fig_list)
+        # print(self.ans_list)
+        # print('\n\n')
 
-        # Define figure variables
-        a = problem.figures['A']
-        b = problem.figures['B']
-        c = problem.figures['C']
+        # print(self.scores)
+        # print(self.transformations)
+        # for transformation in self.transformations:
+        #     print(self.transformations[transformation]['shape'])
+        return -1
 
-        p1 = problem.figures['1']
-        p2 = problem.figures['2']
-        p3 = problem.figures['3']
-        p4 = problem.figures['4']
-        p5 = problem.figures['5']
-        p6 = problem.figures['6']
+    # take a file path and display the image
+    def ShowImage(self, file_path):
+        img = Image.open(file_path, 'r')
+        img.show()
 
-        maxTot = 0   # initiate a best answer score variable to 0
-        answer = 1   # initialize best answer response
+    # Show all images in the problem
+    def ShowAllImages(self, problem):
+        for fig_name in problem.figures:
+            file_path = problem.figures[fig_name].visualFilename
+            self.ShowImage(file_path)
 
-        sameIncr = .1  # same general property increment value
-        angleIncr = 20   # same angle rotation transform increment value
-        reflectIncr = 30  # same reflection transform increment value
-        fillIncr = 25  # increment for correct fill transformation
-        shapeIncr = 200 # increment for correct shape transformation
-        deleteIncr = 300 # increment for correct deletion of objects
-        alignIncr = 30 # increment for correct alignment transformation
-        # TODO: add size, above, and inside transformations
+    def Create_Obj_Info(self, problem):
+        # loop over the figures, each figure has a name
+        # and each figure has a list of objects
+        # each object also has a name and its attributes
+        obj_dict = {}
+        fig_list = []
+        ans_list = []
 
-        for x in range(1, 7):     # loop through each potential answer from 1 to 6:
-
-            print('\n  Now comparing answer: ' + str(x) + ' to ' + problem.name )
-            tot = 0   # initialize
-
-            transformDict = {}  # create dictionary for transformations
-            # initialize empty keys for angle transformations
-            transformDict['abAngleDiff'] = None
-            transformDict['cdAngleDiff'] = None
-            transformDict['acAngleDiff'] = None
-            transformDict['bdAngleDiff'] = None
-
-            # initialize empty keys for fill transformations
-            transformDict['abFillDiff'] = None
-            transformDict['cdFillDiff'] = None
-            transformDict['acFillDiff'] = None
-            transformDict['bdFillDiff'] = None
-
-            # initialize empty keys for shape transformations
-            transformDict['abShapeDiff'] = ''
-            transformDict['cdShapeDiff'] = ''
-            transformDict['acShapeDiff'] = ''
-            transformDict['bdShapeDiff'] = ''
-
-            # initialize empty keys for alignment transformations
-
-            transformDict['abAlignDiff'] = 'empty-'
-            transformDict['cdAlignDiff'] = 'empty-'
-            transformDict['acAlignDiff'] = 'empty-'
-            transformDict['bdAlignDiff'] = 'empty-'
-
-
-            # compare deletion from AB to CD
-            transformDict['abDeleteDiff'] = len(a.objects) - len(b.objects)
-            print('abDeleteDiff: ' + str(transformDict['abDeleteDiff']))
-            transformDict['cdDeleteDiff'] = len(c.objects) - len(problem.figures[str(x)].objects)
-            print('cdDeleteDiff: ' + str(transformDict['cdDeleteDiff']))
-
-            if transformDict['abDeleteDiff'] ==  transformDict['cdDeleteDiff']:
-                tot += (deleteIncr * transformDict['abDeleteDiff'])
-                # tot += (deleteIncr)
-                print('AB CD same deletion!')
-            # compare deltion from AC to BD
-            transformDict['acDeleteDiff'] = len(a.objects) - len(c.objects)
-            print('acDeleteDiff: ' + str(transformDict['acDeleteDiff']))
-
-            transformDict['bdDeleteDiff'] = len(b.objects) - len(problem.figures[str(x)].objects)
-            print('bdDeleteDiff: ' + str(transformDict['bdDeleteDiff']))
-
-            if transformDict['acDeleteDiff'] ==  transformDict['bdDeleteDiff']:
-                tot += (deleteIncr * transformDict['acDeleteDiff'])
-                # tot += (deleteIncr)
-
-                print('AC BD same deletion!')
-
-            for ansObjName in self.sortDict(problem.figures[str(x)].objects):
-                ansObj = problem.figures[str(x)].objects[ansObjName]
-
-                # compare A to B
-                for aObjName in self.sortDict(a.objects):
-                    aObj = a.objects[aObjName]
-                    for bObjName in self.sortDict(b.objects):
-                        bObj = b.objects[bObjName]
-                        makeAngTransCompAB = False   # flags to ensure that angle transformations are only made for objects with angles
-                        # make alignment transformation comparison
-                        if 'alignment' in aObj.attributes and 'alignment' in bObj.attributes:
-                            if aObj.attributes['alignment'] != bObj.attributes['alignment']:
-                                transformDict['abAlignDiff'] = aObj.attributes['alignment'] + '-' + bObj.attributes['alignment']
-                                # remove duplicate words
-                                transformDict['abAlignDiff'] = self.removeDuplicates(transformDict['abAlignDiff'])
-                                print('abAlignDiff: ' + transformDict['abAlignDiff'])
-
-                        # TODO: Investigate the following if statement.  Perhaps some items under it should be brought above it
-                        # check for same shape or sizes in objects in A and B for comparison of same objects
-                        if aObj.attributes['shape'] == bObj.attributes['shape']:
-                        # if aObj.attributes['shape'] == bObj.attributes['shape'] or aObj.attributes['size'] == bObj.attributes['size']:
-
-                            # make fill transform:  if same int = 0, if different, int = 1
-                            #calculate AB fill difference
-                            if aObj.attributes['fill'] == bObj.attributes['fill']:
-                                transformDict['abFillDiff'] = 0
-                            else:
-                                transformDict['abFillDiff'] = 1 # if the fill changed across the transformation assign a 1
-
-                            # make transformation comparisons for angles:
-
-                            print("making angle transformation comparisons")
-                            if 'angle' in aObj.attributes and 'angle' in bObj.attributes: # check that this object has angles
-
-                                #calculate AB angle difference
-                                transformDict['abAngleDiff'] = int(aObj.attributes['angle']) - int(bObj.attributes['angle'])
-                                makeAngTransCompAB = True
-                                print("abAngleDiff= " + str(transformDict['abAngleDiff']))
-                            else:
-                                makeAngTransCompAB = False
-
-                        # check for shape transform:
-                        else:
-                            transformDict['abShapeDiff'] = (aObj.attributes['shape'] + bObj.attributes['shape'])
-                            print('\n  SHAPE TRANSFORM for AB: ' + transformDict['abShapeDiff'])
-
-                # compare C to D
-
-                for cObjName in self.sortDict(c.objects):
-                    makeAngTransCompCD = False
-                    cObj = c.objects[cObjName]
-
-                    #calculate CD fill difference
-                    ansValue = ansObj.attributes['fill']
-                    if (cObj.attributes['fill'] == ansValue):
-                        transformDict['cdFillDiff'] = 0
-                    else:
-                        transformDict['cdFillDiff'] = 1
-                     # Make fill transformation comparison:
-                    if transformDict['abFillDiff']== transformDict['cdFillDiff']:
-                        tot += fillIncr
-                        print("CORRECT ab = cd FILL transformations!")
-
-                    # check alignment transform
-                    if 'alignment' in cObj.attributes and 'alignment' in ansObj.attributes:
-                        if cObj.attributes['alignment'] != ansObj.attributes['alignment']:
-                            transformDict['cdAlignDiff'] = cObj.attributes['alignment'] + '-' + ansObj.attributes['alignment']
-                            print('cdAlignDiff: ' + transformDict['cdAlignDiff'])
-                            # remove duplicate words
-                            transformDict['cdAlignDiff'] = self.removeDuplicates(transformDict['cdAlignDiff'])
-                            print('cdAlignDiff: ' + transformDict['cdAlignDiff'])
-                    # calculate alignment transform differences
-                    if sorted(transformDict['abAlignDiff']) == sorted(transformDict['cdAlignDiff']) and transformDict['abAlignDiff'] != 'empty-' and transformDict['cdAlignDiff'] != 'empty-':
-                        tot += alignIncr
-                        print("CORRECT ab = cd Align transformations!")
-
-                    if cObj.attributes['shape'] == ansObj.attributes['shape']: # check for same shape in objects
-                    # if cObj.attributes['shape'] == ansObj.attributes['shape'] or cObj.attributes['size'] == ansObj.attributes['size']:
-
-
-                            # if angle transformation equal tot+=1
-
-                        if 'angle' in cObj.attributes and 'angle' in ansObj.attributes: # check that this object has angles
-                                transformDict['cdAngleDiff'] = int(cObj.attributes['angle']) - int(ansObj.attributes['angle'])
-                                makeAngTransCompCD = True
-                                print("cdAngleDiff= " + str(transformDict['cdAngleDiff']))
-                        else:
-                            makeAngTransCompCD = False
-                    else:
-                        # TODO: check for shape transform:
-                        transformDict['cdShapeDiff'] = (cObj.attributes['shape'] + ansObj.attributes['shape'])
-                        print('\n  SHAPE TRANSFORM! for CD: ' + transformDict['cdShapeDiff'])
-
-                        if transformDict['abShapeDiff'] != '' and transformDict['cdShapeDiff'] != '':
-                            # the sorting corrects the issue of the same shapes appearing in different orders
-                            if sorted(transformDict['abShapeDiff']) == sorted(transformDict['cdShapeDiff']):
-                                tot += shapeIncr
-                                print("CORRECT SHAPE TRANSFORM! FOR AB TO CD")
-
-                    if makeAngTransCompAB == True and makeAngTransCompCD == True:
-
-                        if abs(transformDict['abAngleDiff'] + 180) % 360 == abs(transformDict['cdAngleDiff']):
-                            tot += reflectIncr
-                            print("ab = cd same reflections!")
-                        elif transformDict['abAngleDiff'] == transformDict['cdAngleDiff']:
-                            tot += angleIncr
-                            print("ab = cd angle transformations!")
-
-                # # compare A to C
-                makeAngTransCompAC = False
-                makeAngTransCompBD = False
-
-                for aObjName in self.sortDict(a.objects):
-                    aObj = a.objects[aObjName]
-                    for cObjName in self.sortDict(c.objects):
-                        cObj = c.objects[cObjName]
-
-                        # make fill transform:  if same int = 0, if different, int = 1
-                            #calculate AB fill difference
-                        if (aObj.attributes['fill'] == cObj.attributes['fill']):
-                            transformDict['acFillDiff'] = 0
-                        else:
-                            transformDict['acFillDiff'] = 1 # if the fill changed across the transformation assign a 1
-
-                        # make alignment transformation comparison
-                        if 'alignment' in aObj.attributes and 'alignment' in cObj.attributes:
-                            if aObj.attributes['alignment'] != cObj.attributes['alignment']:
-                                transformDict['acAlignDiff'] = aObj.attributes['alignment'] + '-' + cObj.attributes['alignment']
-                                # remove duplicate words
-                                transformDict['acAlignDiff'] = self.removeDuplicates(transformDict['acAlignDiff'])
-                                print('acAlignDiff: ' + transformDict['acAlignDiff'])
-
-                        if aObj.attributes['shape'] == cObj.attributes['shape']: # check for same shape in objects
-
-                            if 'angle' in aObj.attributes and 'angle' in cObj.attributes: # check that this object has angles
-                                #calculate AC angle difference
-                                transformDict['acAngleDiff'] = int(aObj.attributes['angle']) - int(cObj.attributes['angle'])
-                                makeAngTransCompAC = True
-                                print("acAngleDiff= " + str(transformDict['acAngleDiff']))
-                            else:
-                                makeAngTransCompAC = False
-
-                        #  check for shape transform:
-                        else:
-                            transformDict['acShapeDiff'] = (aObj.attributes['shape'] + cObj.attributes['shape'])
-                            print('\n  SHAPE TRANSFORM! for AC: ' + transformDict['acShapeDiff'])
-
-                # # compare B to D
-                for bObjName in self.sortDict(b.objects):
-                    bObj = b.objects[bObjName]
-
-                    ansValue = ansObj.attributes['fill']
-                    if (bObj.attributes['fill'] == ansValue):
-                        transformDict['bdFillDiff'] = 0
-                    else:
-                        transformDict['bdFillDiff'] = 1
-
-                     # Make fill transformation comparison:
-                    if transformDict['acFillDiff'] == transformDict['bdFillDiff']:
-                        tot += fillIncr
-                        print("CORRECT ac = bd FILL transformations!")
-
-                     # check alignment transform
-                    if 'alignment' in bObj.attributes and 'alignment' in ansObj.attributes:
-                        if bObj.attributes['alignment'] != ansObj.attributes['alignment']:
-                            transformDict['bdAlignDiff'] = bObj.attributes['alignment'] + '-' + ansObj.attributes['alignment']
-                            print('bdAlignDiff: ' + transformDict['bdAlignDiff'])
-                            # remove duplicate words
-                            transformDict['bdAlignDiff'] = self.removeDuplicates(transformDict['bdAlignDiff'])
-                            print('bdAlignDiff: ' + transformDict['bdAlignDiff'])
-                    # calculate alignment transform differences
-                    if sorted(transformDict['acAlignDiff']) == sorted(transformDict['bdAlignDiff']) and transformDict['acAlignDiff'] != 'empty-' and transformDict['bdAlignDiff'] != 'empty-':
-                        tot += alignIncr
-                        print("CORRECT ac = bd Align transformations!")
-
-
-                    if bObj.attributes['shape'] == ansObj.attributes['shape']: # check for same shape in objects
-                        if 'angle' in bObj.attributes and 'angle' in ansObj.attributes: # check that this object has angles
-                            transformDict['bdAngleDiff'] = int(bObj.attributes['angle']) - int(ansObj.attributes['angle'])
-                            makeAngTransCompBD = True
-                            print("bdAngleDiff= " + str(transformDict['bdAngleDiff']))
-                        else:
-                            makeAngTransCompBD = False
-
-                    else:
-                        # TODO: check for shape transform:
-                        transformDict['bdShapeDiff'] = (bObj.attributes['shape'] + ansObj.attributes['shape'])
-                        print('\n  SHAPE TRANSFORM! for BD: ' + transformDict['bdShapeDiff'])
-                        if transformDict['acShapeDiff'] != '' and transformDict['bdShapeDiff'] != '':
-                            # the sorting corrects the issue of the same shapes appearing in differnet orders
-                            if sorted(transformDict['acShapeDiff']) == sorted(transformDict['bdShapeDiff']):
-                                tot += shapeIncr
-                                print("CORRECT SHAPE TRANSFORM! FOR AC TO BD")
-
-                # if transformation equal tot+=1
-                if makeAngTransCompAC == True and makeAngTransCompBD == True:
-                    if abs(transformDict['acAngleDiff'] + 180) % 360 == abs(transformDict['bdAngleDiff']):
-                        tot += reflectIncr
-                        print("ac = bd same reflections!")
-                    elif transformDict['acAngleDiff'] == transformDict['bdAngleDiff']:
-                        tot += reflectIncr
-                        print("ac = bd angle transformations!")
-
-                # Todo: compare remaining attributes to answer
-
-                for fig in [a, b, c]:
-                    for matrixObjName in fig.objects:
-                        attributeList = ['size', 'shape', 'fill', 'alignment', 'angle', 'above', 'inside']
-                        for attributeName in attributeList:
-                            if attributeName in fig.objects[matrixObjName].attributes and attributeName in ansObj.attributes:
-                                if ansObj.attributes[attributeName] == fig.objects[matrixObjName].attributes[attributeName]:
-                                    tot += sameIncr
-                                    print('Figure' + str(fig.name) + ' attrib: ' +attributeName+ ' compared to ' + str(
-                                        x) + ', current total = ' + str(tot))
-
-                # if local answer > max answer:
-
-                if tot > maxTot:
-                    # max answer = local answer
-                    print("previous maxTot = " + str(maxTot))
-                    maxTot = tot
-                    print("new maxTot = " + str(maxTot))
-                    # answer = current answer
-                    print("previous answer = " + str(answer))
-
-                    answer = x
-
-                    print("new answer = " + str(answer))
-
-        print("final answer = " + str(answer))
-
-        return answer
-
-    def removeDuplicates(self, inputString):
-        alignList = inputString.split('-')
-        listString = ''
-        removeWords = []
-        for word in alignList:
-            if word in listString:
-                removeWords.append(word)
+        for fig_name in problem.figures:
+            if (fig_name.isdigit()):
+                ans_list.append(fig_name)
             else:
-                listString += word
-        for removeWord in removeWords:
-            listString = listString.replace(removeWord, "")
-        return listString
+                fig_list.append(fig_name)
 
-    def sortDict(self, dict):
-        # return sorted(dict, key=dict.get)
-        return dict
+            fig = problem.figures[fig_name]
+
+            obj_arr = []
+            for raven_obj in fig.objects:
+                obj_arr.append(fig.objects[raven_obj])
+                # print(fig.objects[raven_obj].name)
+                # print(fig.objects[raven_obj].attributes)
+            obj_dict[fig_name] = obj_arr
+        # print('\n\n')
+        fig_list.sort()
+        ans_list.sort()
+        return obj_dict, fig_list, ans_list
+
+    def Compare2x2(self, candidate_name, candidate):
+        figure_a = self.obj_info['A']
+        figure_b = self.obj_info['B']
+        figure_c = self.obj_info['C']
+        figure_candidate = self.obj_info[candidate_name]
+
+        self.transformations['AB'] = self.InitTransformation()
+        self.transformations['AC'] = self.InitTransformation()
+        self.transformations['C' + candidate_name] = self.InitTransformation()
+        self.transformations['B' + candidate_name] = self.InitTransformation()
+
+        abScore = 0
+        acScore = 0
+
+        # loop over the objects inside a figure
+        # compare A with B
+        for obj_a in figure_a:
+            for obj_b in figure_b:
+                self.LinkAlignment('A', obj_a, 'B', obj_b)
+                self.LinkShape('A', obj_a, 'B', obj_b)
+
+        # compare A with C
+        for obj_a in figure_a:
+            for obj_c in figure_c:
+                self.LinkAlignment('A', obj_a, 'C', obj_c)
+                self.LinkShape('A', obj_a, 'C', obj_c)
+
+        # compare B with candidate
+        for obj_b in figure_b:
+            for obj_cand in figure_candidate:
+                self.LinkAlignment('B', obj_b, candidate_name, obj_cand)
+                self.LinkShape('B', obj_b, candidate_name, obj_cand)
+
+        # compare C with candidate
+        for obj_c in figure_c:
+            for obj_cand in figure_candidate:
+                self.LinkAlignment('C', obj_c, candidate_name, obj_cand)
+                self.LinkShape('C', obj_c, candidate_name, obj_cand)
+
+        # Compare deletion from AB to CD
+        self.CompareObjsDeletion('A', figure_a, 'B', figure_b)
+        self.CompareObjsDeletion('C', figure_c, candidate_name, figure_candidate)
+
+        # Compare deletion from AC to BD
+        self.CompareObjsDeletion('A', figure_a, 'C', figure_c)
+        self.CompareObjsDeletion('B', figure_b, candidate_name, figure_candidate)
+
+        #######################################################################
+        # compare deletions
+        # number of deletions are the same
+
+
+        abScore = self.CalculateScore(['A', 'B'], ['C', candidate_name])
+        acScore = self.CalculateScore(['A', 'C'], ['B', candidate_name])
+        if self.show_other:
+            print(abScore)
+            print(acScore)
+            print('-------------------------------------------\n')
+
+        # return score
+        return -1
+
+    def CalculateScore(self, from_pair, to_pair):
+        orgPair = from_pair[0] + from_pair[1]
+        newPair = to_pair[0] + to_pair[1]
+
+        score = 0
+
+        delWeight = 10 # weight for same deletion of objects
+        alignWeight = 10 # weight for same alignments
+
+        fill_weight = 25 # weight for fill transformation
+        fill_unchanged_weight = 25 # weight for fill property being unchanged
+
+        angle_weight = 20 # weight for angle transformation
+        angle_unchanged_weight = 40  # weight for angle property being unchanged
+        reflection_weight = 40 # weight for reflection
+
+        size_weight = 30 # weight for size
+        size_unchanged_weight = 30 # weight for size property being unchanged
+
+        # shape_kind_unchanged_weight = 100 # weight for the shapes in both relationships are the same kind
+        shape_unchanged_weight = 200 # weight for a shape being unchanged
+
+        # shapeWeight = 3 # weight for a same shape transformation
+        sameShapeModifier = 50 # shapes are of the same kind
+
+        same_transform_weight = 400
+
+        if (self.transformations[newPair]['deletion'] == self.transformations[orgPair]['deletion']):
+            score += (delWeight * abs(self.transformations[orgPair]['deletion']))
+
+        # compare alignments
+        if ('alignment' in self.transformations[orgPair] and 'alignment' in self.transformations[newPair]):
+            for alignment in self.transformations[newPair]['alignment']:
+                for alignmentOrg in self.transformations[orgPair]['alignment']:
+                    # if self.show_weight:
+                    #     print(newPair)
+                    #     print(alignment)
+                    #     print(orgPair)
+                    #     print(alignmentOrg)
+                    if (alignment['from'] == alignmentOrg['from'] and alignment['to'] == alignmentOrg['to']):
+                        score += alignWeight
+                        if self.show_weight:
+                            print('alignWeight')
+
+        # compare shapes
+        for shape_cand in self.transformations[newPair]['shape']:
+            for shape_ab in self.transformations[orgPair]['shape']:
+
+                same = True
+                same_transform = True
+
+                # compare fill, angle, size
+                # compare fill
+                if ('fill' in shape_cand and 'fill' in shape_ab):
+                    if (shape_cand['fill']['changed'] == False and shape_ab['fill']['changed'] == False):
+                        # fill property unchanged
+                        score += fill_unchanged_weight
+                        if self.show_weight:
+                            print('fill_unchanged_weight')
+                    elif (shape_cand['fill']['changed'] == True and shape_ab['fill']['changed'] == True):
+                        same = False
+                        if (shape_cand['fill']['from'] == shape_ab['fill']['from'] and
+                            shape_cand['fill']['to'] == shape_ab['fill']['to']):
+                            # fill property changed and transformation are the same
+                            score += fill_weight
+                            if self.show_weight:
+                                print('fill_weight')
+                        else:
+                            same_transform = False
+                    else:
+                        same_transform = False
+                else:
+                    # fill property unchanged
+                    score += fill_unchanged_weight
+                    if self.show_weight:
+                        print('fill_unchanged_weight')
+
+                # compare angle
+                if ('angle' in shape_cand and 'angle' in shape_ab):
+                    if (shape_cand['angle']['changed'] == False and shape_ab['angle']['changed'] == False):
+                        # fill property unchanged
+                        score += angle_unchanged_weight
+                        if self.show_weight:
+                            print('angle_unchanged_weight')
+                    elif (shape_cand['angle']['changed'] == True and shape_ab['angle']['changed'] == True):
+                        same = False
+                        if self.show_weight:
+                            print(newPair)
+                            print(shape_cand['angle'])
+                            print(orgPair)
+                            print(shape_ab['angle'])
+                        if (abs(shape_cand['angle']['diff']) == abs(shape_ab['angle']['diff'])):
+                            # fill property changed, but transformation are the same
+                            # if (abs(shape_cand['angle']['diff']) == 180 or abs(shape_cand['angle']['diff']) == 360):
+
+                            # check for reflection
+                            # if (abs(shape_ab['angle']['diff']) + 180) % 360 == abs(shape_cand['angle']['diff']):
+                            if (abs(shape_cand['angle']['diff'])%90 == 0):
+                                score += reflection_weight
+                                if self.show_weight:
+                                    print('reflection_weight')
+                            else:
+                                score += angle_weight
+                                if self.show_weight:
+                                    print('angle_weight')
+                        else:
+                            same_transform = False
+                    else:
+                        same_transform = False
+                else:
+                    # fill property unchanged
+                    score += angle_unchanged_weight
+                    if self.show_weight:
+                        print('angle_unchanged_weight')
+
+
+                # compare size
+                if ('size' in shape_cand and 'size' in shape_ab):
+                    if (shape_cand['size']['changed'] == False and shape_ab['size']['changed'] == False):
+                        # size property unchanged
+                        score += size_unchanged_weight
+                        if self.show_weight:
+                            print('size_unchanged_weight')
+                    elif (shape_cand['size']['changed'] == True and shape_ab['size']['changed'] == True):
+                        same = False
+                        if (shape_cand['size']['from'] == shape_ab['size']['from'] and
+                            shape_cand['size']['to'] == shape_ab['size']['to']):
+                            # size property changed, but transformation are the same
+                            score += size_weight
+                            if self.show_weight:
+                                print('size_weight')
+                        else:
+                            same_transform = False
+                    else:
+                        same_transform = False
+                else:
+                    # size property unchanged
+                    score += size_unchanged_weight
+                    if self.show_weight:
+                        print('size_unchanged_weight')
+
+
+                # if the shapes are the same
+                if same == True:
+                    score += shape_unchanged_weight
+                    if self.show_weight:
+                        print('shape_unchanged_weight')
+
+                # if the shapes are the same kind, add sameShapeModifier
+                if (shape_cand['transform']['changed'] == shape_ab['transform']['changed'] and
+                    shape_cand['transform']['changed'] == False):
+                    score += sameShapeModifier
+                    if self.show_weight:
+                        print('sameShapeModifier')
+                    # score += shape_kind_unchanged_weight
+
+                if (same_transform == True):
+                    score += same_transform_weight
+                    if self.show_weight:
+                        print('same_transform')
+
+                if self.show_weight:
+                    print('\n')
+
+
+                '''
+                # first verify the transformation is unchanged in both relationships
+                if (shape_cand['changed'] == shape_ab['changed'] and shape_cand['changed'] == False):
+                    score += shapeUnchangeWeight
+                    if self.show_weight:
+                        print('shapeUnchangeWeight')
+                else:
+                    # compare transformation
+                    if (shape_cand['transform']['changed'] == False and
+                        shape_ab['transform']['changed'] == False):
+                        score += shapeUnchangeWeight
+                        if self.show_weight:
+                            print('shapeUnchangeWeight')
+                    elif (shape_cand['transform']['changed'] == True and
+                        shape_ab['transform']['changed'] == True):
+                        if (shape_cand['transform']['from'] == shape_ab['transform']['from'] and
+                            shape_cand['transform']['to'] == shape_ab['transform']['to']):
+                            score += shapeWeight
+                            if self.show_weight:
+                                print('shapeWeight')
+
+
+                    # compare fill, angle, size
+                '''
+
+
+
+
+
+
+
+
+        return score
+
+    def InitTransformation(self):
+        transformation = {
+            'deletion': float("inf"),
+            'shape': [],
+            'alignment': [],
+            'inside': []
+        }
+        return transformation
+
+    def CompareObjsDeletion(self, candidate_name_1, candidate_1, candidate_name_2, candidate_2):
+        key = candidate_name_1 + candidate_name_2
+        self.transformations[key]['deletion'] = len(candidate_1) - len(candidate_2)
+
+    def LinkAlignment(self, candidate_name_1, obj_1, candidate_name_2, obj_2):
+        key = candidate_name_1 + candidate_name_2
+
+        # if ('alignment' in obj_1.attributes and 'alignment' in obj_2.attributes and
+        #     obj_1.name == obj_2.name):
+        if ('alignment' in obj_1.attributes and 'alignment' in obj_2.attributes):
+            self.transformations[key]['alignment'].append({
+                'from_name': obj_1.name,
+                'from': obj_1.attributes['alignment'],
+                'to_name': obj_2.name,
+                'to': obj_2.attributes['alignment']
+            })
+
+    def LinkShape(self, candidate_name_1, obj_1, candidate_name_2, obj_2):
+        key = candidate_name_1 + candidate_name_2
+        info = {
+            'from_name': obj_1.name,
+            'to_name': obj_2.name,
+            'changed': False
+        }
+
+        # check if both shapes are the same
+        if (obj_1.attributes['shape'] == obj_2.attributes['shape']):
+            # shapes are the same
+            info['transform'] = {
+                'changed': False
+            }
+        else:
+            # shape transformation
+            info['changed'] = True
+            info['transform'] = {
+                'changed': True,
+                'from': obj_1.attributes['shape'],
+                'to': obj_2.attributes['shape']
+            }
+
+        # see if shape goes from unfilled to filled or vice versa
+        if ('fill' in obj_1.attributes and 'fill' in obj_2.attributes and
+            (obj_1.attributes['fill'] != obj_2.attributes['fill'])):
+            info['changed'] = True
+            info['fill'] = {
+                'changed': True,
+                'from': obj_1.attributes['fill'],
+                'to': obj_2.attributes['fill']
+            }
+        else:
+            info['fill'] = {
+                'changed': False
+            }
+
+        # see if shape has angle transformation
+        if ('angle' in obj_1.attributes and 'angle' in obj_2.attributes and
+            (obj_1.attributes['angle'] != obj_2.attributes['angle'])):
+            info['changed'] = True
+            info['angle'] = {
+                'changed': True,
+                'from': int(obj_1.attributes['angle']),
+                'to': int(obj_2.attributes['angle']),
+                'diff': int(obj_2.attributes['angle']) - int(obj_1.attributes['angle'])
+            }
+        else:
+            info['angle'] = {
+                'changed': False
+            }
+
+        # see if shape has size change
+        if ('size' in obj_1.attributes and 'size' in obj_2.attributes and
+            (obj_1.attributes['size'] != obj_2.attributes['size'])):
+            info['changed'] = True
+            info['size'] = {
+                'changed': True,
+                'from': obj_1.attributes['size'],
+                'to': obj_2.attributes['size']
+            }
+        else:
+            info['size'] = {
+                'changed': False
+            }
+
+
+        self.transformations[key]['shape'].append(info)
