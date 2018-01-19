@@ -34,7 +34,7 @@ class Agent:
         print('Solving ' + problem.name)
 
         self.show_weight = False
-        if problem.name == 'Basic Problem B-05dvds':
+        if problem.name == 'Basic Problem B-06sdvsd':
             self.show_weight = True
 
         self.show_other = True
@@ -166,20 +166,32 @@ class Agent:
         orgPair = from_pair[0] + from_pair[1]
         newPair = to_pair[0] + to_pair[1]
 
+        stat = {
+            'alignWeight': { 'count': 0, 'score': 0 },
+            'whole_unchanged_weight': { 'count': 0, 'score': 0 },
+            'fill_unchanged_weight': { 'count': 0, 'score': 0 },
+            'fill_weight': { 'count': 0, 'score': 0 },
+            'angle_unchanged_weight': { 'count': 0, 'score': 0 },
+            'reflection_weight': { 'count': 0, 'score': 0 },
+            'angle_weight': { 'count': 0, 'score': 0 },
+            'size_unchanged_weight': { 'count': 0, 'score': 0 },
+            'size_weight': { 'count': 0, 'score': 0 }
+        }
+
         score = 0
 
-        delWeight = 300 # weight for same deletion of objects
-        alignWeight = 30 # weight for same alignments
+        delWeight = 100 # weight for same deletion of objects
+        alignWeight = 10 # weight for same alignments
 
-        fill_weight = 25 # weight for fill transformation
-        fill_unchanged_weight = 25 # weight for fill property being unchanged
+        fill_weight = 90 # weight for fill transformation
+        fill_unchanged_weight = 20 # weight for fill property being unchanged
 
-        angle_weight = 20 # weight for angle transformation
-        angle_unchanged_weight = 40  # weight for angle property being unchanged
-        reflection_weight = 40 # weight for reflection
+        angle_weight = 30 # weight for angle transformation
+        angle_unchanged_weight = 15  # weight for angle property being unchanged
+        reflection_weight = 60 # weight for reflection
 
-        size_weight = 30 # weight for size
-        size_unchanged_weight = 30 # weight for size property being unchanged
+        size_weight = 40 # weight for size
+        size_unchanged_weight = 15 # weight for size property being unchanged
 
         # shape_kind_unchanged_weight = 100 # weight for the shapes in both relationships are the same kind
         shape_unchanged_weight = 200 # weight for a shape being unchanged
@@ -187,7 +199,9 @@ class Agent:
         # shapeWeight = 3 # weight for a same shape transformation
         sameShapeModifier = 50 # shapes are of the same kind
 
-        same_transform_weight = 400
+        same_transform_weight = 200
+
+        whole_unchanged_weight = 300
 
         if (self.transformations[newPair]['deletion'] == self.transformations[orgPair]['deletion']):
             score += (delWeight * abs(self.transformations[orgPair]['deletion']))
@@ -203,162 +217,122 @@ class Agent:
                     #     print(alignmentOrg)
                     if (alignment['from'] == alignmentOrg['from'] and alignment['to'] == alignmentOrg['to']):
                         score += alignWeight
-                        if self.show_weight:
-                            print('alignWeight')
+                        stat['alignWeight']['count'] += 1
+                        stat['alignWeight']['score'] += alignWeight
 
         # compare shapes
         for shape_cand in self.transformations[newPair]['shape']:
             for shape_ab in self.transformations[orgPair]['shape']:
 
-                same = True
-                same_transform = True
+                # same = True
+                # same_transform = True
 
-                # compare fill, angle, size
-                # compare fill
-                if ('fill' in shape_cand and 'fill' in shape_ab):
-                    if (shape_cand['fill']['changed'] == False and shape_ab['fill']['changed'] == False):
+                # check if both relation are unchanged
+                if (shape_cand['changed'] == shape_ab['changed'] and
+                    shape_cand['changed'] == False):
+                    score += whole_unchanged_weight
+                    stat['whole_unchanged_weight']['count'] += 1
+                    stat['whole_unchanged_weight']['score'] += whole_unchanged_weight
+                else:
+                    # compare fill, angle, size
+
+                    # compare fill
+                    if ('fill' in shape_cand and 'fill' in shape_ab):
+                        if (shape_cand['fill']['changed'] == False and
+                            shape_ab['fill']['changed'] == False):
+                            # fill property unchanged
+                            score += fill_unchanged_weight
+                            stat['fill_unchanged_weight']['count'] += 1
+                            stat['fill_unchanged_weight']['score'] += fill_unchanged_weight
+                        elif (shape_cand['fill']['changed'] == True and
+                            shape_ab['fill']['changed'] == True):
+                            score += fill_weight
+                            stat['fill_weight']['count'] += 1
+                            stat['fill_weight']['score'] += fill_weight
+                    else:
                         # fill property unchanged
                         score += fill_unchanged_weight
-                        if self.show_weight:
-                            print('fill_unchanged_weight')
-                    elif (shape_cand['fill']['changed'] == True and shape_ab['fill']['changed'] == True):
-                        same = False
-                        if (shape_cand['fill']['from'] == shape_ab['fill']['from'] and
-                            shape_cand['fill']['to'] == shape_ab['fill']['to']):
-                            # fill property changed and transformation are the same
-                            score += fill_weight
-                            if self.show_weight:
-                                print('fill_weight')
+                        stat['fill_unchanged_weight']['count'] += 1
+                        stat['fill_unchanged_weight']['score'] += fill_unchanged_weight
+
+                    # compare angle
+                    if ('angle' in shape_cand and 'angle' in shape_ab):
+                        if (shape_cand['angle']['changed'] == False and shape_ab['angle']['changed'] == False):
+                            # fill property unchanged
+                            score += angle_unchanged_weight
+                            stat['angle_unchanged_weight']['count'] += 1
+                            stat['angle_unchanged_weight']['score'] += angle_unchanged_weight
+                        elif (shape_cand['angle']['changed'] == True and shape_ab['angle']['changed'] == True):
+                            # if self.show_weight:
+                            #     print(newPair)
+                            #     print(shape_cand['angle'])
+                            #     print(orgPair)
+                            #     print(shape_ab['angle'])
+                            if (abs(shape_cand['angle']['diff']) == abs(shape_ab['angle']['diff'])):
+                                # fill property changed, but transformation are the same
+                                # if (abs(shape_cand['angle']['diff']) == 180 or abs(shape_cand['angle']['diff']) == 360):
+
+                                # check for reflection
+                                # if (abs(shape_ab['angle']['diff']) + 180) % 360 == abs(shape_cand['angle']['diff']):
+                                if (abs(shape_cand['angle']['diff'])%90 == 0):
+                                    score += reflection_weight
+                                    stat['reflection_weight']['count'] += 1
+                                    stat['reflection_weight']['score'] += reflection_weight
+                                else:
+                                    score += angle_weight
+                                    stat['angle_weight']['count'] += 1
+                                    stat['angle_weight']['score'] += angle_weight
+                            else:
+                                same_transform = False
                         else:
                             same_transform = False
                     else:
-                        same_transform = False
-                else:
-                    # fill property unchanged
-                    score += fill_unchanged_weight
-                    if self.show_weight:
-                        print('fill_unchanged_weight')
-
-                # compare angle
-                if ('angle' in shape_cand and 'angle' in shape_ab):
-                    if (shape_cand['angle']['changed'] == False and shape_ab['angle']['changed'] == False):
                         # fill property unchanged
                         score += angle_unchanged_weight
-                        if self.show_weight:
-                            print('angle_unchanged_weight')
-                    elif (shape_cand['angle']['changed'] == True and shape_ab['angle']['changed'] == True):
-                        same = False
-                        if self.show_weight:
-                            print(newPair)
-                            print(shape_cand['angle'])
-                            print(orgPair)
-                            print(shape_ab['angle'])
-                        if (abs(shape_cand['angle']['diff']) == abs(shape_ab['angle']['diff'])):
-                            # fill property changed, but transformation are the same
-                            # if (abs(shape_cand['angle']['diff']) == 180 or abs(shape_cand['angle']['diff']) == 360):
+                        stat['angle_unchanged_weight']['count'] += 1
+                        stat['angle_unchanged_weight']['score'] += angle_unchanged_weight
 
-                            # check for reflection
-                            # if (abs(shape_ab['angle']['diff']) + 180) % 360 == abs(shape_cand['angle']['diff']):
-                            if (abs(shape_cand['angle']['diff'])%90 == 0):
-                                score += reflection_weight
-                                if self.show_weight:
-                                    print('reflection_weight')
-                            else:
-                                score += angle_weight
-                                if self.show_weight:
-                                    print('angle_weight')
-                        else:
-                            same_transform = False
+
+                    # compare size
+                    if ('size' in shape_cand and 'size' in shape_ab):
+                        if (shape_cand['size']['changed'] == False and shape_ab['size']['changed'] == False):
+                            # size property unchanged
+                            score += size_unchanged_weight
+                            stat['size_unchanged_weight']['count'] += 1
+                            stat['size_unchanged_weight']['score'] += size_unchanged_weight
+                        elif (shape_cand['size']['changed'] == True and shape_ab['size']['changed'] == True):
+                            score += size_weight
+                            stat['size_weight']['count'] += 1
+                            stat['size_weight']['score'] += size_weight
                     else:
-                        same_transform = False
-                else:
-                    # fill property unchanged
-                    score += angle_unchanged_weight
-                    if self.show_weight:
-                        print('angle_unchanged_weight')
-
-
-                # compare size
-                if ('size' in shape_cand and 'size' in shape_ab):
-                    if (shape_cand['size']['changed'] == False and shape_ab['size']['changed'] == False):
                         # size property unchanged
                         score += size_unchanged_weight
-                        if self.show_weight:
-                            print('size_unchanged_weight')
-                    elif (shape_cand['size']['changed'] == True and shape_ab['size']['changed'] == True):
-                        same = False
-                        if (shape_cand['size']['from'] == shape_ab['size']['from'] and
-                            shape_cand['size']['to'] == shape_ab['size']['to']):
-                            # size property changed, but transformation are the same
-                            score += size_weight
-                            if self.show_weight:
-                                print('size_weight')
-                        else:
-                            same_transform = False
-                    else:
-                        same_transform = False
-                else:
-                    # size property unchanged
-                    score += size_unchanged_weight
-                    if self.show_weight:
-                        print('size_unchanged_weight')
+                        stat['size_unchanged_weight']['count'] += 1
+                        stat['size_unchanged_weight']['score'] += size_unchanged_weight
 
 
-                # if the shapes are the same
-                if same == True:
-                    score += shape_unchanged_weight
-                    if self.show_weight:
-                        print('shape_unchanged_weight')
+                    # if the shapes are the same
+                    # if same == True:
+                    #     score += shape_unchanged_weight
+                    #     if self.show_weight:
+                    #         print('shape_unchanged_weight')
 
                 # if the shapes are the same kind, add sameShapeModifier
-                if (shape_cand['transform']['changed'] == shape_ab['transform']['changed'] and
-                    shape_cand['transform']['changed'] == False):
-                    score += sameShapeModifier
-                    if self.show_weight:
-                        print('sameShapeModifier')
+                # if (shape_cand['transform']['changed'] == shape_ab['transform']['changed'] and
+                #     shape_cand['transform']['changed'] == False):
+                #     score += sameShapeModifier
+                #     if self.show_weight:
+                #         print('sameShapeModifier')
                     # score += shape_kind_unchanged_weight
 
-                if (same_transform == True):
-                    score += same_transform_weight
-                    if self.show_weight:
-                        print('same_transform')
+                # if (same_transform == True):
+                #     score += same_transform_weight
+                #     if self.show_weight:
+                #         print('same_transform')
 
-                if self.show_weight:
-                    print('\n')
-
-
-                '''
-                # first verify the transformation is unchanged in both relationships
-                if (shape_cand['changed'] == shape_ab['changed'] and shape_cand['changed'] == False):
-                    score += shapeUnchangeWeight
-                    if self.show_weight:
-                        print('shapeUnchangeWeight')
-                else:
-                    # compare transformation
-                    if (shape_cand['transform']['changed'] == False and
-                        shape_ab['transform']['changed'] == False):
-                        score += shapeUnchangeWeight
-                        if self.show_weight:
-                            print('shapeUnchangeWeight')
-                    elif (shape_cand['transform']['changed'] == True and
-                        shape_ab['transform']['changed'] == True):
-                        if (shape_cand['transform']['from'] == shape_ab['transform']['from'] and
-                            shape_cand['transform']['to'] == shape_ab['transform']['to']):
-                            score += shapeWeight
-                            if self.show_weight:
-                                print('shapeWeight')
-
-
-                    # compare fill, angle, size
-                '''
-
-
-
-
-
-
-
-
+        if self.show_weight:
+            print(stat)
+            print('\n')
         return score
 
     def InitTransformation(self):
