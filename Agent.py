@@ -9,8 +9,19 @@
 # These methods will be necessary for the project's main method to run.
 
 # Install Pillow and uncomment this line to access image processing.
+from RavensObject import RavensObject
 from PIL import Image
 import numpy
+import itertools
+import copy
+
+# _PLACEHOLDER_DELETED_PREFIX = 'PLACEHOLDER_DELETED_'
+_PLACEHOLDER_DELETED_PREFIX = 'DEL'
+_PLACEHOLDER_NEW_PREFIX = 'NEW'
+
+_DELETED = 'DELETED'
+_REFLECTION = 'REFLECTION'
+
 
 class Agent:
     # The default constructor for your Agent. Make sure to execute any
@@ -31,401 +42,468 @@ class Agent:
     # Make sure to return your answer *as an integer* at the end of Solve().
     # Returning your answer as a string may cause your program to crash.
     def Solve(self,problem):
+
         print('Solving ' + problem.name)
+        self.candidate_answers = []
 
-        self.show_weight = False
-        if problem.name == 'Basic Problem B-06sdvsd':
-            self.show_weight = True
+        if (not problem.name.startswith('Basic Problem B') ):
+            return -1
 
-        self.show_other = True
-        if problem.name.startswith('Basic Problem C') or problem.name.startswith('Challenge Problem'):
-            self.show_other = False
+        self.__init_problem_2x2(problem, 'A', 'B')
 
-        # loop over the figures, each figure has a name
-        self.obj_info, self.fig_list, self.ans_list = self.Create_Obj_Info(problem)
-        self.transformations = {}
-        self.scores = {}
-        for candidate in self.ans_list:
-            # print(candidate)
-            # print(self.obj_info[candidate])
-            self.scores[candidate] = self.Compare2x2(candidate, self.obj_info[candidate])
-            if self.show_weight:
-                print('\n')
-        # print(self.obj_info)
-        # print(self.fig_list)
-        # print(self.ans_list)
-        # print('\n\n')
+        # GENERATE: generate all possible figure object-to-object mapping
+        self.possible_mappings = self.generate_mappings(self.figures['A'], self.figures['B'])
 
-        # print(self.scores)
-        # print(self.transformations)
-        # for transformation in self.transformations:
-        #     print(self.transformations[transformation]['shape'])
-        return -1
+        # Calculate transformation
+        self.possible_transformations = self.get_transformations(
+            self.possible_mappings, self.figures['A'], self.figures['B'])
 
-    # take a file path and display the image
-    def ShowImage(self, file_path):
-        img = Image.open(file_path, 'r')
-        img.show()
+        # Keep Track of the lowest transformation in case there is more than one candidate answer
+        self.best_transformation = self.__find_best_transformation(self.possible_transformations)
 
-    # Show all images in the problem
-    def ShowAllImages(self, problem):
-        for fig_name in problem.figures:
-            file_path = problem.figures[fig_name].visualFilename
-            self.ShowImage(file_path)
+        applied_transformations = self.__apply_transformation(self.best_transformation, self.figures['C'])
 
-    def Create_Obj_Info(self, problem):
-        # loop over the figures, each figure has a name
-        # and each figure has a list of objects
-        # each object also has a name and its attributes
-        obj_dict = {}
-        fig_list = []
-        ans_list = []
+        # For each of the applied transformation, remove the ones don't match any answers
+        for applied_transformation in applied_transformations:
+            for possible_answer in self.answer_list:
+                if self.figuresAreEqual(applied_transformation, possible_answer):
+                    self.addCandidateAnswer(possible_answer)
 
-        for fig_name in problem.figures:
-            if (fig_name.isdigit()):
-                ans_list.append(fig_name)
+        # self.__init_problem_2x2(problem, 'A', 'C')
+        #
+        # # GENERATE: generate all possible figure object-to-object mapping
+        # self.possible_mappings = self.generate_mappings(self.figures['A'], self.figures['C'])
+        #
+        # # Calculate transformation
+        # self.possible_transformations = self.get_transformations(
+        #     self.possible_mappings, self.figures['A'], self.figures['C'])
+        #
+        # # Keep Track of the lowest transformation in case there is more than one candidate answer
+        # self.best_transformation = self.__find_best_transformation(self.possible_transformations)
+        #
+        # applied_transformations = self.__apply_transformation(self.best_transformation, self.figures['B'])
+        #
+        # # For each of the applied transformation, remove the ones don't match any answers
+        # for applied_transformation in applied_transformations:
+        #     for possible_answer in self.answer_list:
+        #         if self.figuresAreEqual(applied_transformation, possible_answer):
+        #             self.addCandidateAnswer(possible_answer)
+
+        answers_by_priority = sorted(self.candidate_answers, key=lambda k: k['priority'])
+        print(self.candidate_answers)
+
+        # Make a guess or skip
+        answer = 2
+        if len(answers_by_priority) > 0:
+            answer = int(answers_by_priority[0]['figure'].name)
+        elif len(self.answer_list) == 1:
+            answer = int(self.answer_list[0].name)
+
+        print(answer)
+        return answer
+        # return -1
+
+    def addCandidateAnswer(self, figure):
+        ans = {
+            "priority": 1,
+            "figure": figure
+        }
+
+        # if the answer is already a candidate, just increment its priority
+        for candidate_answer in self.candidate_answers:
+            if candidate_answer['figure'].name == figure.name:
+                candidate_answer['priority'] += 1
+                return
+
+        self.candidate_answers.append(ans)
+
+    def figuresAreEqual(self, figure1, figure2):
+        if not len(figure1.objects) == len(figure2.objects):
+            return False
+
+        objects_equal = 0
+
+        for object_in_1 in figure1.objects.items():
+            for object_in_2 in figure2.objects.items():
+                if self.objectsAreEqual(object_in_1[1], object_in_2[1]):
+                    objects_equal += 1
+
+        return objects_equal == len(figure1.objects)
+
+    def filterFiguresBasedDiff(self, expected_diff, target_figure, figures):
+        filtered_figures = []
+        # Remove answers that are clearly wrong beause they don't have the expected number of objects
+        for figure in figures:
+            figure_diff = len(target_figure.objects) - len(figure.objects)
+            if expected_diff == figure_diff:
+                filtered_figures.append(figure)
+
+        return filtered_figures
+
+    def objectsAreEqual(self, object1, object2):
+        identical = 0
+
+        if len(object1.attributes) != len(object2.attributes):
+            return False
+
+        try:
+            for attr in object1.attributes:
+                if object1.attributes[attr] == object2.attributes[attr]:
+                    identical += 1
+                elif attr in ['inside', 'above']:
+                    identical += 1
+        except:
+            print "Attr not found in object2, so not identical"
+
+        return identical == len(object1.attributes)
+
+    def __init_problem_2x2(self, problem, from_name, to_name):
+        """Initialization for a 2x2 problem
+
+        Initialize figure_list, candidate_list, answer_list and figures
+
+        Args:
+            problem: the problem passed from the Solve method
+        """
+        self.figure_list = ['A', 'B', 'C']
+        self.candidate_list = ['1', '2', '3', '4', '5', '6']
+
+        self.figures = {}
+        self.figures['A'] = copy.deepcopy(problem.figures['A'])
+        self.figures['B'] = copy.deepcopy(problem.figures['B'])
+        self.figures['C'] = copy.deepcopy(problem.figures['C'])
+
+        # Initialization
+        self.answer_list = []
+        for key in self.candidate_list:
+            self.answer_list.append(problem.figures[key])
+
+        # remove answers that don't have same deletions/insertions
+        self.ab_diff = len(self.figures[from_name].objects) - len(self.figures[to_name].objects)
+        if self.ab_diff > 0:
+            # A has more objects so pad B with special "DEL" nodes
+            for i in range(abs(self.ab_diff)):
+                self.figures[to_name].objects[_PLACEHOLDER_DELETED_PREFIX + str(i)] = RavensObject(_PLACEHOLDER_DELETED_PREFIX)
+
+        elif self.ab_diff < 0:
+            # B has more objects so pad A with special "INS" nodes
+            for i in range(abs(self.ab_diff)):
+                self.figures[from_name].objects[_PLACEHOLDER_NEW_PREFIX + str(i)] = RavensObject(_PLACEHOLDER_NEW_PREFIX)
+
+        if to_name == 'B':
+            self.answer_list = list(
+                filter(lambda answer:
+                    (len(self.figures['C'].objects) - len(answer.objects)) == self.ab_diff,
+                    self.answer_list))
+        elif to_name == 'C':
+            self.answer_list = list(
+                filter(lambda answer:
+                    (len(self.figures['B'].objects) - len(answer.objects)) == self.ab_diff,
+                    self.answer_list))
+
+    def generate_mappings(self, figure_from, figure_to):
+        """Generate possible mappings
+
+        Generate a list of mappings from objects of figure_from to figure_to
+
+        Args:
+            figure_from: the figure mapping from
+            figure_to: the figure mapping to
+
+        Returns:
+            possible_mappings: [ [ <object, object> ], [ <object, object> ] ]
+        """
+        # diff = len(figure_from.objects) - len(figure_to.objects)
+        # for i in range(abs(diff)):
+        #     if diff > 0:
+        #         figure_from.objects[_PLACEHOLDER_DELETED_PREFIX + str(i)] = RavensObject(_PLACEHOLDER_DELETED_PREFIX + 'OBJ')
+        #     elif diff < 0:
+        #         figure_to.objects[_PLACEHOLDER_NEW_PREFIX + str(i)] = RavensObject(_PLACEHOLDER_NEW_PREFIX + 'OBJ')
+
+        possible_mappings = [zip(mapping, figure_to.objects) for mapping in itertools.permutations(figure_from.objects, len(figure_to.objects))]
+
+        return possible_mappings
+
+    def __init_transformation(self, mapping):
+        return {
+            'mapping': mapping,
+            'mutations': []
+        }
+
+    def __init_mutation(self, from_obj, to_obj, is_placeholder=False):
+        mutation = {
+            'type': 'placeholder' if is_placeholder == True else 'normal',
+            'from': from_obj,
+            'to': to_obj,
+            'attribute_changes': []
+        }
+
+        if not is_placeholder:
+            # compare attribute changes
+
+            # obj: exists => deleted
+            if to_obj.name.startswith(_PLACEHOLDER_DELETED_PREFIX):
+                mutation['attribute_changes'].append(_DELETED)
+                return mutation
+
+            attribute_found = False
+            for to_attr in to_obj.attributes.items():
+                # looping over attributes found in to_obj
+
+                for from_attr in from_obj.attributes.items():
+                    # looping over attributes found in from_obj
+                    if (to_attr == from_attr):
+                        # attrbute and its value are the same
+                        attribute_found = True
+                    elif to_attr[0] == from_attr[0]:
+                        # attribute are the same, but values are different
+
+                        # case 'inside' and 'above' => skip
+                        if to_attr[0] == 'inside' or to_attr[0] == 'above':
+                            attribute_found = True
+                        # case 'alignment' => check if there's a reflection
+                        elif from_attr[0] == 'alignment':
+                            attribute_found = True
+                            result = self.get_alignment_reflection_axis(from_attr[1], to_attr[1])
+                            if result:
+                                mutation['attribute_changes'].append((_REFLECTION, result))
+                        # case 'angle' => check if there's a reflection
+                        elif from_attr[0] == 'angle':
+                            attribute_found = True
+                            result = self.get_angle_reflection_axis(from_attr[1], to_attr[1])
+                            if result:
+                                mutation['attribute_changes'].append((_REFLECTION, result))
+
+                if not attribute_found:
+                    mutation['attribute_changes'].append(to_attr)
+
+                attribute_found = False
+
+        return mutation
+
+    def get_transformations(self, mappings, figure_from, figure_to):
+        """ Get Transformations
+
+        Create a list of possible transformation based on each mapping
+
+        """
+        transformations = []
+
+        for mapping in mappings:
+            # for each possible mapping
+            transformation = self.__init_transformation(mapping)
+
+            # For each
+            for obj_link in mapping:
+                # get names
+                from_name = obj_link[0]
+                to_name = obj_link[1]
+
+                # retrieve the real objects
+                from_obj = figure_from.objects[from_name]
+                to_obj = figure_to.objects[to_name]
+                mutation = self.__init_mutation(from_obj, to_obj)
+
+                transformation['mutations'].append(mutation)
+
+            transformations.append(transformation)
+
+        return transformations
+
+    def __apply_transformation(self, transformation, figure):
+
+        # print(transformation)
+        # print(figure.objects)
+        # initialization
+        diff = len(transformation['mutations']) - len(figure.objects)
+        if diff < 0:
+            # if target figure has more objects than available transformation, add placeholder objects to mutations
+            for i in range(abs(diff)):
+                transformation['mutations'].append(self.__init_mutation(None, None, True))
+        elif diff > 0:
+            # if target figure has more objects than available transformation, add new placeholder objects to figure
+            for i in range(abs(diff)):
+                figure.objects[_PLACEHOLDER_NEW_PREFIX + str(i)] = RavensObject(_PLACEHOLDER_NEW_PREFIX)
+
+
+        # iterate over all mutations
+        mutation_list = {}
+        for index, mutation in enumerate(transformation['mutations']):
+
+            if mutation['type'] != 'placeholder':
+                # use from_obj name as key
+                from_obj_name = mutation['from'].name
+                mutation_list[from_obj_name] = mutation
             else:
-                fig_list.append(fig_name)
+                # use a dummy name as key
+                mutation_list[_PLACEHOLDER_NEW_PREFIX + str(index)] = mutation
 
-            fig = problem.figures[fig_name]
+        # create new possible mappings with mutation_list
+        new_possible_mappings = [zip(mapping, figure.objects) for mapping in
+                                      itertools.permutations(mutation_list, len(figure.objects))]
 
-            obj_arr = []
-            for raven_obj in fig.objects:
-                obj_arr.append(fig.objects[raven_obj])
-                # print(fig.objects[raven_obj].name)
-                # print(fig.objects[raven_obj].attributes)
-            obj_dict[fig_name] = obj_arr
-        # print('\n\n')
-        fig_list.sort()
-        ans_list.sort()
-        return obj_dict, fig_list, ans_list
+        transformations = []
+        for mapping in new_possible_mappings:
+            # deep copy figure_from
+            figure_copy = copy.deepcopy(figure)
 
-    def Compare2x2(self, candidate_name, candidate):
-        figure_a = self.obj_info['A']
-        figure_b = self.obj_info['B']
-        figure_c = self.obj_info['C']
-        figure_candidate = self.obj_info[candidate_name]
+            # give it a new name
+            figure_copy.name = self.__tuple_list_to_string(mapping)
 
-        self.transformations['AB'] = self.InitTransformation()
-        self.transformations['AC'] = self.InitTransformation()
-        self.transformations['C' + candidate_name] = self.InitTransformation()
-        self.transformations['B' + candidate_name] = self.InitTransformation()
+            for obj_link in mapping:
+                from_obj_name = obj_link[0]
+                to_obj_name = obj_link[1]
 
-        abScore = 0
-        acScore = 0
+                obj_link_mutations = mutation_list[from_obj_name]['attribute_changes']
 
-        # loop over the objects inside a figure
-        # compare A with B
-        for obj_a in figure_a:
-            for obj_b in figure_b:
-                self.LinkAlignment('A', obj_a, 'B', obj_b)
-                self.LinkShape('A', obj_a, 'B', obj_b)
+                # Convert target attributes from dict to list
+                target_attributes = []
+                for attr in figure_copy.objects[to_obj_name].attributes.items():
+                    target_attributes.append(attr)
 
-        # compare A with C
-        for obj_a in figure_a:
-            for obj_c in figure_c:
-                self.LinkAlignment('A', obj_a, 'C', obj_c)
-                self.LinkShape('A', obj_a, 'C', obj_c)
+                # apply deletion
+                if len(obj_link_mutations) > 0 and obj_link_mutations[0] == _DELETED:
+                    del figure_copy.objects[to_obj_name]
+                    # probably not necessary
+                    continue
 
-        # compare B with candidate
-        for obj_b in figure_b:
-            for obj_cand in figure_candidate:
-                self.LinkAlignment('B', obj_b, candidate_name, obj_cand)
-                self.LinkShape('B', obj_b, candidate_name, obj_cand)
+                for target_attr in target_attributes:
+                    for mutation in obj_link_mutations:
+                        if target_attr[0] == mutation[0]:
+                            figure_copy.objects[to_obj_name].attributes[target_attr[0]] = \
+                                mutation[1]
 
-        # compare C with candidate
-        for obj_c in figure_c:
-            for obj_cand in figure_candidate:
-                self.LinkAlignment('C', obj_c, candidate_name, obj_cand)
-                self.LinkShape('C', obj_c, candidate_name, obj_cand)
+                        # Special case for when there is a reflection (Remove angle, flie reflectable properties)
+                        elif mutation[0] == _REFLECTION:
+                            figure_copy.objects[to_obj_name].attributes[_REFLECTION] = \
+                                mutation[1]
 
-        # Compare deletion from AB to CD
-        self.CompareObjsDeletion('A', figure_a, 'B', figure_b)
-        self.CompareObjsDeletion('C', figure_c, candidate_name, figure_candidate)
+                attributes = figure_copy.objects[to_obj_name].attributes
+                if _REFLECTION in attributes:
+                    reflection_axis = attributes[_REFLECTION]
 
-        # Compare deletion from AC to BD
-        self.CompareObjsDeletion('A', figure_a, 'C', figure_c)
-        self.CompareObjsDeletion('B', figure_b, candidate_name, figure_candidate)
+                    # Handle alignment reflection
+                    if 'alignment' in attributes:
+                        # Delete angle
+                        if 'angle' in figure_copy.objects[to_obj_name].attributes:
+                            del figure_copy.objects[to_obj_name].attributes['angle']
 
-        #######################################################################
-        # compare deletions
-        # number of deletions are the same
+                        figure_copy.objects[to_obj_name].attributes['alignment'] = \
+                            self.__flip_alignment(reflection_axis, attributes['alignment'])
+
+                    # Handle angle reflection
+                    if 'angle' in attributes:
+                        figure_copy.objects[to_obj_name].attributes['angle'] = \
+                            self.__flip_angle(reflection_axis, attributes['angle'])
+                    # Delete reflection property introduced by the agent
+                    del figure_copy.objects[to_obj_name].attributes[_REFLECTION]
 
 
-        abScore = self.CalculateScore(['A', 'B'], ['C', candidate_name])
-        acScore = self.CalculateScore(['A', 'C'], ['B', candidate_name])
-        if self.show_other:
-            print(abScore)
-            print(acScore)
-            print('-------------------------------------------\n')
+            transformations.append(figure_copy)
 
-        # return score
-        return -1
+        return transformations
 
-    def CalculateScore(self, from_pair, to_pair):
-        orgPair = from_pair[0] + from_pair[1]
-        newPair = to_pair[0] + to_pair[1]
+    def __find_best_transformation(self, transformations):
+        best_transformation = None
+        best_transformation = transformations[0]
+        best_transformation_count = 0
+        best_transformation_count = self.__get_mutations_count(best_transformation)
 
-        stat = {
-            'alignWeight': { 'count': 0, 'score': 0 },
-            'whole_unchanged_weight': { 'count': 0, 'score': 0 },
-            'fill_unchanged_weight': { 'count': 0, 'score': 0 },
-            'fill_weight': { 'count': 0, 'score': 0 },
-            'angle_unchanged_weight': { 'count': 0, 'score': 0 },
-            'reflection_weight': { 'count': 0, 'score': 0 },
-            'angle_weight': { 'count': 0, 'score': 0 },
-            'size_unchanged_weight': { 'count': 0, 'score': 0 },
-            'size_weight': { 'count': 0, 'score': 0 }
+        # Apply each transformation to C, and see what comes out at the other end
+        for transformation in transformations:
+            count = self.__get_mutations_count(transformation)
+            if (count < best_transformation_count):
+                best_transformation = transformation
+                best_transformation_count = count
+                continue
+
+        return best_transformation
+
+    def __get_mutations_count(self, transformation):
+        # return reduce(lambda acc, curr: acc + len(curr['mutations']) if isinstance(acc, int) \
+        #     else len(acc['mutations']) + len(curr['mutations']), transformation)
+
+        count = 0
+        for mutation in transformation['mutations']:
+            count += len(mutation['attribute_changes'])
+        return count
+
+    def get_alignment_reflection_axis(self, align_from, align_to):
+        if align_from.startswith('top'):
+            if ((align_from == 'top-left' and  align_to == 'top-right') or
+                (align_from == 'top-right' and  align_to == 'top-left')):
+                return 'x'
+
+            if ((align_from == 'top-left' and  align_to == 'bottom-left') or
+                (align_from == 'top-right' and  align_to == 'bottom-right')):
+                return 'y'
+
+        if align_from.startswith('bottom'):
+            if ((align_from == 'bottom-left' and  align_to == 'bottom-right') or
+                (align_from == 'bottom-right' and  align_to == 'bottom-left')):
+                return 'x'
+
+            if ((align_from == 'bottom-left' and  align_to == 'top-left') or
+                (align_from == 'bottom-right' and  align_to == 'top-right')):
+                return 'y'
+        return False
+
+    def get_angle_reflection_axis(self, angle_from, angle_to):
+        # the value is misleading, here it just indicates there's reflection
+        # the value y is chosen to align with Get_Alignment_Reflection_Axis
+        if ((angle_from == '45' and angle_to == '135') or
+            (angle_from == '135' and angle_to == '45')):
+            return 'y'
+        if ((angle_from == '315' and angle_to == '225') or
+            (angle_from == '225' and angle_to == '315')):
+            return 'y'
+        if ((angle_from == '270' and angle_to == '0') or
+            (angle_from == '0' and angle_to == '270')):
+            return 'y'
+        return False
+
+    def __tuple_list_to_string(self, list):
+        items = []
+        for tuple in list:
+            items.append("(" + str(tuple[0]) + " -> " + str(tuple[1]) + ")")
+        return ', '.join(items)
+
+    def __flip_alignment(self, axis, alignment):
+        alignment_reflections = {
+            'x': [
+                ['top-left', 'top-right'],
+                ['left', 'right'],
+                ['bottom-left', 'bottom-right'],
+            ],
+            'y': [
+                ['top-left', 'bottom-left'],
+                ['top', 'bottom'],
+                ['top-right', 'bottom-right']
+            ]
         }
 
-        score = 0
+        reflections = alignment_reflections[axis]
+        for reflection in reflections:
+            if reflection[0] == alignment:
+                return reflection[1]
+            elif reflection[1] == alignment:
+                return reflection[0]
 
-        delWeight = 100 # weight for same deletion of objects
-        alignWeight = 10 # weight for same alignments
+    def __flip_angle(self, axis, angle):
+        angle_reflections = {
+            'x': [
 
-        fill_weight = 90 # weight for fill transformation
-        fill_unchanged_weight = 20 # weight for fill property being unchanged
-
-        angle_weight = 30 # weight for angle transformation
-        angle_unchanged_weight = 15  # weight for angle property being unchanged
-        reflection_weight = 60 # weight for reflection
-
-        size_weight = 40 # weight for size
-        size_unchanged_weight = 15 # weight for size property being unchanged
-
-        # shape_kind_unchanged_weight = 100 # weight for the shapes in both relationships are the same kind
-        shape_unchanged_weight = 200 # weight for a shape being unchanged
-
-        # shapeWeight = 3 # weight for a same shape transformation
-        sameShapeModifier = 50 # shapes are of the same kind
-
-        same_transform_weight = 200
-
-        whole_unchanged_weight = 300
-
-        if (self.transformations[newPair]['deletion'] == self.transformations[orgPair]['deletion']):
-            score += (delWeight * abs(self.transformations[orgPair]['deletion']))
-
-        # compare alignments
-        if ('alignment' in self.transformations[orgPair] and 'alignment' in self.transformations[newPair]):
-            for alignment in self.transformations[newPair]['alignment']:
-                for alignmentOrg in self.transformations[orgPair]['alignment']:
-                    # if self.show_weight:
-                    #     print(newPair)
-                    #     print(alignment)
-                    #     print(orgPair)
-                    #     print(alignmentOrg)
-                    if (alignment['from'] == alignmentOrg['from'] and alignment['to'] == alignmentOrg['to']):
-                        score += alignWeight
-                        stat['alignWeight']['count'] += 1
-                        stat['alignWeight']['score'] += alignWeight
-
-        # compare shapes
-        for shape_cand in self.transformations[newPair]['shape']:
-            for shape_ab in self.transformations[orgPair]['shape']:
-
-                # same = True
-                # same_transform = True
-
-                # check if both relation are unchanged
-                if (shape_cand['changed'] == shape_ab['changed'] and
-                    shape_cand['changed'] == False):
-                    score += whole_unchanged_weight
-                    stat['whole_unchanged_weight']['count'] += 1
-                    stat['whole_unchanged_weight']['score'] += whole_unchanged_weight
-                else:
-                    # compare fill, angle, size
-
-                    # compare fill
-                    if ('fill' in shape_cand and 'fill' in shape_ab):
-                        if (shape_cand['fill']['changed'] == False and
-                            shape_ab['fill']['changed'] == False):
-                            # fill property unchanged
-                            score += fill_unchanged_weight
-                            stat['fill_unchanged_weight']['count'] += 1
-                            stat['fill_unchanged_weight']['score'] += fill_unchanged_weight
-                        elif (shape_cand['fill']['changed'] == True and
-                            shape_ab['fill']['changed'] == True):
-                            score += fill_weight
-                            stat['fill_weight']['count'] += 1
-                            stat['fill_weight']['score'] += fill_weight
-                    else:
-                        # fill property unchanged
-                        score += fill_unchanged_weight
-                        stat['fill_unchanged_weight']['count'] += 1
-                        stat['fill_unchanged_weight']['score'] += fill_unchanged_weight
-
-                    # compare angle
-                    if ('angle' in shape_cand and 'angle' in shape_ab):
-                        if (shape_cand['angle']['changed'] == False and shape_ab['angle']['changed'] == False):
-                            # fill property unchanged
-                            score += angle_unchanged_weight
-                            stat['angle_unchanged_weight']['count'] += 1
-                            stat['angle_unchanged_weight']['score'] += angle_unchanged_weight
-                        elif (shape_cand['angle']['changed'] == True and shape_ab['angle']['changed'] == True):
-                            # if self.show_weight:
-                            #     print(newPair)
-                            #     print(shape_cand['angle'])
-                            #     print(orgPair)
-                            #     print(shape_ab['angle'])
-                            if (abs(shape_cand['angle']['diff']) == abs(shape_ab['angle']['diff'])):
-                                # fill property changed, but transformation are the same
-                                # if (abs(shape_cand['angle']['diff']) == 180 or abs(shape_cand['angle']['diff']) == 360):
-
-                                # check for reflection
-                                # if (abs(shape_ab['angle']['diff']) + 180) % 360 == abs(shape_cand['angle']['diff']):
-                                if (abs(shape_cand['angle']['diff'])%90 == 0):
-                                    score += reflection_weight
-                                    stat['reflection_weight']['count'] += 1
-                                    stat['reflection_weight']['score'] += reflection_weight
-                                else:
-                                    score += angle_weight
-                                    stat['angle_weight']['count'] += 1
-                                    stat['angle_weight']['score'] += angle_weight
-                            else:
-                                same_transform = False
-                        else:
-                            same_transform = False
-                    else:
-                        # fill property unchanged
-                        score += angle_unchanged_weight
-                        stat['angle_unchanged_weight']['count'] += 1
-                        stat['angle_unchanged_weight']['score'] += angle_unchanged_weight
-
-
-                    # compare size
-                    if ('size' in shape_cand and 'size' in shape_ab):
-                        if (shape_cand['size']['changed'] == False and shape_ab['size']['changed'] == False):
-                            # size property unchanged
-                            score += size_unchanged_weight
-                            stat['size_unchanged_weight']['count'] += 1
-                            stat['size_unchanged_weight']['score'] += size_unchanged_weight
-                        elif (shape_cand['size']['changed'] == True and shape_ab['size']['changed'] == True):
-                            score += size_weight
-                            stat['size_weight']['count'] += 1
-                            stat['size_weight']['score'] += size_weight
-                    else:
-                        # size property unchanged
-                        score += size_unchanged_weight
-                        stat['size_unchanged_weight']['count'] += 1
-                        stat['size_unchanged_weight']['score'] += size_unchanged_weight
-
-
-                    # if the shapes are the same
-                    # if same == True:
-                    #     score += shape_unchanged_weight
-                    #     if self.show_weight:
-                    #         print('shape_unchanged_weight')
-
-                # if the shapes are the same kind, add sameShapeModifier
-                # if (shape_cand['transform']['changed'] == shape_ab['transform']['changed'] and
-                #     shape_cand['transform']['changed'] == False):
-                #     score += sameShapeModifier
-                #     if self.show_weight:
-                #         print('sameShapeModifier')
-                    # score += shape_kind_unchanged_weight
-
-                # if (same_transform == True):
-                #     score += same_transform_weight
-                #     if self.show_weight:
-                #         print('same_transform')
-
-        if self.show_weight:
-            print(stat)
-            print('\n')
-        return score
-
-    def InitTransformation(self):
-        transformation = {
-            'deletion': float("inf"),
-            'shape': [],
-            'alignment': [],
-            'inside': []
-        }
-        return transformation
-
-    def CompareObjsDeletion(self, candidate_name_1, candidate_1, candidate_name_2, candidate_2):
-        key = candidate_name_1 + candidate_name_2
-        self.transformations[key]['deletion'] = len(candidate_1) - len(candidate_2)
-
-    def LinkAlignment(self, candidate_name_1, obj_1, candidate_name_2, obj_2):
-        key = candidate_name_1 + candidate_name_2
-
-        # if ('alignment' in obj_1.attributes and 'alignment' in obj_2.attributes and
-        #     obj_1.name == obj_2.name):
-        if ('alignment' in obj_1.attributes and 'alignment' in obj_2.attributes):
-            self.transformations[key]['alignment'].append({
-                'from_name': obj_1.name,
-                'from': obj_1.attributes['alignment'],
-                'to_name': obj_2.name,
-                'to': obj_2.attributes['alignment']
-            })
-
-    def LinkShape(self, candidate_name_1, obj_1, candidate_name_2, obj_2):
-        key = candidate_name_1 + candidate_name_2
-        info = {
-            'from_name': obj_1.name,
-            'to_name': obj_2.name,
-            'changed': False
+            ],
+            'y': [
+                ['45', '135'],
+                ['315', '225'],
+                ['270', '0']
+            ]
         }
 
-        # check if both shapes are the same
-        if (obj_1.attributes['shape'] == obj_2.attributes['shape']):
-            # shapes are the same
-            info['transform'] = {
-                'changed': False
-            }
-        else:
-            # shape transformation
-            info['changed'] = True
-            info['transform'] = {
-                'changed': True,
-                'from': obj_1.attributes['shape'],
-                'to': obj_2.attributes['shape']
-            }
-
-        # see if shape goes from unfilled to filled or vice versa
-        if ('fill' in obj_1.attributes and 'fill' in obj_2.attributes and
-            (obj_1.attributes['fill'] != obj_2.attributes['fill'])):
-            info['changed'] = True
-            info['fill'] = {
-                'changed': True,
-                'from': obj_1.attributes['fill'],
-                'to': obj_2.attributes['fill']
-            }
-        else:
-            info['fill'] = {
-                'changed': False
-            }
-
-        # see if shape has angle transformation
-        if ('angle' in obj_1.attributes and 'angle' in obj_2.attributes and
-            (obj_1.attributes['angle'] != obj_2.attributes['angle'])):
-            info['changed'] = True
-            info['angle'] = {
-                'changed': True,
-                'from': int(obj_1.attributes['angle']),
-                'to': int(obj_2.attributes['angle']),
-                'diff': int(obj_2.attributes['angle']) - int(obj_1.attributes['angle'])
-            }
-        else:
-            info['angle'] = {
-                'changed': False
-            }
-
-        # see if shape has size change
-        if ('size' in obj_1.attributes and 'size' in obj_2.attributes and
-            (obj_1.attributes['size'] != obj_2.attributes['size'])):
-            info['changed'] = True
-            info['size'] = {
-                'changed': True,
-                'from': obj_1.attributes['size'],
-                'to': obj_2.attributes['size']
-            }
-        else:
-            info['size'] = {
-                'changed': False
-            }
-
-
-        self.transformations[key]['shape'].append(info)
+        for axis in angle_reflections.items():
+            for property in axis[1]:
+                if property[0] == angle:
+                    return  property[1]
+                elif property[1] == angle:
+                    return property[0]
