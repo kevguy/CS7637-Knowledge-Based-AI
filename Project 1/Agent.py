@@ -21,6 +21,8 @@ _PLACEHOLDER_NEW_PREFIX = 'NEW'
 
 _DELETED = 'DELETED'
 _REFLECTION = 'REFLECTION'
+_INSIDE = 'INSIDE'
+_ABOVE = 'ABOVE'
 
 
 class Agent:
@@ -30,6 +32,28 @@ class Agent:
     # Do not add any variables to this signature; they will not be used by
     # main().
     def __init__(self):
+        self.align_reflections_map = {
+          'x': [
+            ['left', 'right'],
+            ['top-left', 'top-right'],
+            ['bottom-left', 'bottom-right'],
+          ],
+          'y': [
+            ['top', 'bottom'],
+            ['top-left', 'bottom-left'],
+            ['top-right', 'bottom-right']
+          ]
+        }
+
+        self.angle_reflections_map = {
+          'x': [],
+          'y': [
+            ['45', '135'],
+            ['315', '225'],
+            ['270', '0']
+          ]
+        }
+
         pass
 
     # The primary method for solving incoming Raven's Progressive Matrices.
@@ -46,7 +70,7 @@ class Agent:
         print('Solving ' + problem.name)
         self.candidate_answers = []
 
-        if (not problem.name.startswith('Basic Problem B') ):
+        if ((problem.name.startswith('Basic Problem C')) or (problem.name.startswith('Challenge Problem C'))):
             return -1
 
         self.__init_problem_2x2(problem, 'A', 'B')
@@ -66,36 +90,44 @@ class Agent:
         # For each of the applied transformation, remove the ones don't match any answers
         for applied_transformation in applied_transformations:
             for possible_answer in self.answer_list:
-                if self.figuresAreEqual(applied_transformation, possible_answer):
-                    self.addCandidateAnswer(possible_answer)
+                if self.compare_figures(applied_transformation, possible_answer):
+                    self.__add_candidate_answer(possible_answer)
 
-        # self.__init_problem_2x2(problem, 'A', 'C')
-        #
-        # # GENERATE: generate all possible figure object-to-object mapping
-        # self.possible_mappings = self.generate_mappings(self.figures['A'], self.figures['C'])
-        #
-        # # Calculate transformation
-        # self.possible_transformations = self.get_transformations(
-        #     self.possible_mappings, self.figures['A'], self.figures['C'])
-        #
-        # # Keep Track of the lowest transformation in case there is more than one candidate answer
-        # self.best_transformation = self.__find_best_transformation(self.possible_transformations)
-        #
-        # applied_transformations = self.__apply_transformation(self.best_transformation, self.figures['B'])
-        #
-        # # For each of the applied transformation, remove the ones don't match any answers
-        # for applied_transformation in applied_transformations:
-        #     for possible_answer in self.answer_list:
-        #         if self.figuresAreEqual(applied_transformation, possible_answer):
-        #             self.addCandidateAnswer(possible_answer)
+        abList = copy.deepcopy(self.candidate_answers)
+        # print(abList)
 
-        answers_by_priority = sorted(self.candidate_answers, key=lambda k: k['priority'])
-        print(self.candidate_answers)
+        self.__init_problem_2x2(problem, 'A', 'C')
+
+        # GENERATE: generate all possible figure object-to-object mapping
+        self.possible_mappings = self.generate_mappings(self.figures['A'], self.figures['C'])
+
+        # Calculate transformation
+        self.possible_transformations = self.get_transformations(
+            self.possible_mappings, self.figures['A'], self.figures['C'])
+
+        # Keep Track of the lowest transformation in case there is more than one candidate answer
+        self.best_transformation = self.__find_best_transformation(self.possible_transformations)
+
+        applied_transformations = self.__apply_transformation(self.best_transformation, self.figures['B'])
+
+        # For each of the applied transformation, remove the ones don't match any answers
+        for applied_transformation in applied_transformations:
+            for possible_answer in self.answer_list:
+                if self.compare_figures(applied_transformation, possible_answer):
+                    self.__add_candidate_answer(possible_answer)
+
+        acList = copy.deepcopy(self.candidate_answers)
+        # print(acList)
+
+        answers_by_score = sorted(abList + acList, key=lambda k: k['score'], reverse=True)
+
+        print(answers_by_score)
+
 
         # Make a guess or skip
         answer = 2
-        if len(answers_by_priority) > 0:
-            answer = int(answers_by_priority[0]['figure'].name)
+        if len(answers_by_score) > 0:
+            answer = int(answers_by_score[0]['figure'].name)
         elif len(self.answer_list) == 1:
             answer = int(self.answer_list[0].name)
 
@@ -103,59 +135,54 @@ class Agent:
         return answer
         # return -1
 
-    def addCandidateAnswer(self, figure):
-        ans = {
-            "priority": 1,
-            "figure": figure
-        }
+    def __add_candidate_answer(self, figure):
+        answer = { 'score': 1, 'figure': figure }
 
-        # if the answer is already a candidate, just increment its priority
+        # if the answer is already a candidate, just increment its score
         for candidate_answer in self.candidate_answers:
             if candidate_answer['figure'].name == figure.name:
-                candidate_answer['priority'] += 1
+                candidate_answer['score'] += 1
                 return
 
-        self.candidate_answers.append(ans)
+        self.candidate_answers.append(answer)
 
-    def figuresAreEqual(self, figure1, figure2):
-        if not len(figure1.objects) == len(figure2.objects):
+    def compare_figures(self, fig_1, fig_2):
+        if not len(fig_1.objects) == len(fig_2.objects):
             return False
 
-        objects_equal = 0
+        objs_equal_count = 0
+        for obj_1 in fig_1.objects.items():
+            for obj_2 in fig_2.objects.items():
+                if self.compare_objects(obj_1[1], obj_2[1]):
+                    objs_equal_count += 1
 
-        for object_in_1 in figure1.objects.items():
-            for object_in_2 in figure2.objects.items():
-                if self.objectsAreEqual(object_in_1[1], object_in_2[1]):
-                    objects_equal += 1
+        return objs_equal_count == len(fig_1.objects)
 
-        return objects_equal == len(figure1.objects)
+    # def filterFiguresBasedDiff(self, expected_diff, target_figure, figures):
+    #     filtered_figures = []
+    #     # Remove answers that are clearly wrong beause they don't have the expected number of objects
+    #     for figure in figures:
+    #         figure_diff = len(target_figure.objects) - len(figure.objects)
+    #         if expected_diff == figure_diff:
+    #             filtered_figures.append(figure)
+    #
+    #     return filtered_figures
 
-    def filterFiguresBasedDiff(self, expected_diff, target_figure, figures):
-        filtered_figures = []
-        # Remove answers that are clearly wrong beause they don't have the expected number of objects
-        for figure in figures:
-            figure_diff = len(target_figure.objects) - len(figure.objects)
-            if expected_diff == figure_diff:
-                filtered_figures.append(figure)
-
-        return filtered_figures
-
-    def objectsAreEqual(self, object1, object2):
-        identical = 0
-
-        if len(object1.attributes) != len(object2.attributes):
+    def compare_objects(self, obj_1, obj_2):
+        if len(obj_1.attributes) != len(obj_2.attributes):
             return False
 
+        identical_count = 0
         try:
-            for attr in object1.attributes:
-                if object1.attributes[attr] == object2.attributes[attr]:
-                    identical += 1
+            for attr in obj_1.attributes:
+                if obj_1.attributes[attr] == obj_2.attributes[attr]:
+                    identical_count += 1
                 elif attr in ['inside', 'above']:
-                    identical += 1
+                    identical_count += 1
         except:
-            print "Attr not found in object2, so not identical"
+            print "Attribute not found in obj_2, so not identical"
 
-        return identical == len(object1.attributes)
+        return identical_count == len(obj_1.attributes)
 
     def __init_problem_2x2(self, problem, from_name, to_name):
         """Initialization for a 2x2 problem
@@ -247,18 +274,41 @@ class Agent:
                 return mutation
 
             attribute_found = False
+            from_shape = ''
+            from_fill = ''
+            from_size = ''
+            to_shape = ''
+            to_fill = ''
+            to_size = ''
             for to_attr in to_obj.attributes.items():
                 # looping over attributes found in to_obj
+                if to_attr[0] == 'shape':
+                    to_shape = to_attr[1]
+
+                if to_attr[0] == 'fill':
+                    to_fill = to_attr[1]
+
+                if to_attr[0] == 'size':
+                    to_size = to_attr[1]
 
                 for from_attr in from_obj.attributes.items():
                     # looping over attributes found in from_obj
+                    if from_attr[0] == 'shape':
+                        from_shape = from_attr[1]
+
+                    if from_attr[0] == 'fill':
+                        from_fill = from_attr[1]
+
+                    if from_attr[0] == 'size':
+                        from_size = from_attr[1]
+
                     if (to_attr == from_attr):
                         # attrbute and its value are the same
                         attribute_found = True
                     elif to_attr[0] == from_attr[0]:
                         # attribute are the same, but values are different
 
-                        # case 'inside' and 'above' => skip
+                        # case 'inside' and 'above'
                         if to_attr[0] == 'inside' or to_attr[0] == 'above':
                             attribute_found = True
                         # case 'alignment' => check if there's a reflection
@@ -278,6 +328,12 @@ class Agent:
                     mutation['attribute_changes'].append(to_attr)
 
                 attribute_found = False
+
+            if (from_shape == to_shape):
+                if from_fill != to_fill:
+                    mutation['attribute_changes'].append(['fill', to_fill])
+                if from_size != to_size:
+                    mutation['attribute_changes'].append(['size', to_size])
 
         return mutation
 
@@ -465,43 +521,18 @@ class Agent:
     def __tuple_list_to_string(self, list):
         items = []
         for tuple in list:
-            items.append("(" + str(tuple[0]) + " -> " + str(tuple[1]) + ")")
+            items.append('(' + str(tuple[0]) + ' -> ' + str(tuple[1]) + ')')
         return ', '.join(items)
 
     def __flip_alignment(self, axis, alignment):
-        alignment_reflections = {
-            'x': [
-                ['top-left', 'top-right'],
-                ['left', 'right'],
-                ['bottom-left', 'bottom-right'],
-            ],
-            'y': [
-                ['top-left', 'bottom-left'],
-                ['top', 'bottom'],
-                ['top-right', 'bottom-right']
-            ]
-        }
-
-        reflections = alignment_reflections[axis]
-        for reflection in reflections:
+        for reflection in self.align_reflections_map[axis]:
             if reflection[0] == alignment:
                 return reflection[1]
             elif reflection[1] == alignment:
                 return reflection[0]
 
     def __flip_angle(self, axis, angle):
-        angle_reflections = {
-            'x': [
-
-            ],
-            'y': [
-                ['45', '135'],
-                ['315', '225'],
-                ['270', '0']
-            ]
-        }
-
-        for axis in angle_reflections.items():
+        for axis in self.angle_reflections_map.items():
             for property in axis[1]:
                 if property[0] == angle:
                     return  property[1]
